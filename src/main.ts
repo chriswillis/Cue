@@ -1,3 +1,34 @@
+/**
+ * main.ts — the app shell. Start reading here.
+ *
+ * WHAT HAPPENS WHEN THE PAGE LOADS
+ *   1. The same index.html serves two windows. `#presenter` in the URL boots
+ *      the presenter window (presenter.ts); anything else boots the editor.
+ *   2. boot() draws the static UI (shellHTML at the bottom of this file), then
+ *      decides what text to open: a shared link (#v1k… / #v1p…), else the last
+ *      deck from the library (storage.ts), else the sample deck.
+ *   3. createEditor() (editor.ts) puts that text in CodeMirror. From then on
+ *      the editor text is the single source of truth: settings live in its
+ *      front matter, slides are derived from it, nothing else is stored.
+ *
+ * THE LOOP (every keystroke)
+ *   type ─▶ editor onChange ─┬─▶ scheduleRender (90 ms) ─▶ renderAll()
+ *                            │       parse (already done in editor state)
+ *                            │       ─▶ renderSlide() per slide (render.ts, cached)
+ *                            │       ─▶ fit() shrinks type until it fits
+ *                            │       ─▶ strip, preview, overview, inspector, stage
+ *                            ├─▶ autosave (600 ms) ─▶ deck library (IndexedDB)
+ *                            │                     └▶ the .md file, if one is open
+ *                            └─▶ broadcast (300 ms) ─▶ presenter window
+ *
+ * HOW UI EVENTS WORK
+ *   Buttons carry `data-act="something"`. One click listener on the app
+ *   (see "events" below) switches on that name. To add a command: put a
+ *   button with a new data-act in shellHTML(), then add a `case` for it.
+ *
+ * Everything inside boot() shares its local variables (deck, view, slides,
+ * current…) through closures; that's why most functions live inside it.
+ */
 import './fonts';
 import './styles/app.css';
 import './styles/slide.css';
@@ -18,6 +49,7 @@ import sample from './sample.md?raw';
 
 injectThemeCSS();
 
+// Two apps, one page: the presenter window opens this same URL with #presenter.
 if (location.hash === '#presenter') {
   bootPresenter();
 } else {
@@ -68,6 +100,7 @@ function ago(t: number): string {
   return new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
+/** What New starts with: default settings, then an empty title slide. */
 const BLANK_DOC = `---
 theme: swiss
 appearance: light
@@ -78,6 +111,7 @@ aspect: 16:9
 
 `;
 
+/** Builds the editor app. Runs once; everything below shares its local state. */
 async function boot() {
   const app = document.getElementById('app')!;
   app.innerHTML = shellHTML();
@@ -110,6 +144,9 @@ async function boot() {
   let inspector: Inspector | null = null;
 
   /* ---------------- rendering ---------------- */
+  // Slides are cached by their content + settings, so typing on slide 7
+  // re-renders only slide 7. Changing a setting changes every key, so a theme
+  // switch re-renders everything.
   const keyFor = (s: SlideSource, p: ParsedDoc) =>
     JSON.stringify([s.visibleMd, s.layoutHint, s.look, s.index, p.title, p.settings]);
 
@@ -139,6 +176,7 @@ async function boot() {
     stage.update(slides, parsed.settings);
   }
 
+  // Debounce: renders at most every 90 ms while typing.
   let renderTimer = 0;
   const scheduleRender = (delay = 90) => {
     clearTimeout(renderTimer);
@@ -215,6 +253,7 @@ async function boot() {
     );
   }
 
+  /** Make slide i current. reveal: move the editor cursor there. broadcast: tell the presenter window. */
   function goto(i: number, opts: { reveal?: boolean; broadcast?: boolean } = {}) {
     const next = Math.max(0, Math.min(slides.length - 1, i));
     if (next === current && !opts.reveal) return;
@@ -227,6 +266,9 @@ async function boot() {
   }
 
   /* ---------------- editor ---------------- */
+  // Three timers hang off every change: render (90 ms), autosave (600 ms) and
+  // presenter sync (300 ms). `loading` marks programmatic text swaps (switching
+  // decks) so they don't count as edits.
   let saveTimer = 0;
   let broadcastTimer = 0;
   let dirty = false; // edits not yet written to the library
@@ -252,6 +294,11 @@ async function boot() {
   setDocName();
   setStatus(sharedMode ? 'Opened from a link' : deck ? 'Restored' : 'Not saved yet');
   $('.shared-pill').hidden = !sharedMode;
+
+  /* ---------------- deck library (storage.ts) ---------------- */
+  // `deck` is the library record being edited, or null for a deck that hasn't
+  // been saved yet (a fresh New, the sample, a shared link). persistCurrent()
+  // creates the record on the first real edit.
 
   /**
    * Stop treating the open deck as a shared one. Whatever is saved next becomes
@@ -503,6 +550,9 @@ async function boot() {
   }
 
   /* ---------------- settings live in front matter ---------------- */
+  // The Design panel never stores settings itself: it calls updateSettings,
+  // which rewrites the front matter block at the top of the text. Undo, save
+  // and share therefore include settings for free.
   function updateSettings(patch: Partial<Settings>) {
     const p = getParsed(view);
     const s = { ...p.settings, ...patch };
@@ -540,6 +590,8 @@ async function boot() {
   }
 
   /* ---------------- inspector ---------------- */
+  // The Design panel (inspector.ts) reads state through these callbacks and
+  // writes through update/setLayout. It never touches the editor directly.
   inspector = new Inspector($('.inspector'), {
     settings: () => parsed.settings,
     slide: () => parsed.slides[current],
@@ -572,6 +624,10 @@ async function boot() {
   setView('split');
 
   /* ---------------- present ---------------- */
+  // Present mode (present.ts) reuses the rendered slide nodes. The presenter
+  // window is a separate page that talks to this one over a BroadcastChannel:
+  // it says 'hello', we answer with the full text ('state'); either side sends
+  // 'goto' when the slide changes.
   stage.onChange = (i) => goto(i, { broadcast: true });
   stage.onClose = () => view.focus();
 
@@ -659,6 +715,9 @@ async function boot() {
   }
 
   /* ---------------- events ---------------- */
+  // One delegated listener for every [data-act] button in the app. To add a
+  // command: give a button data-act="my-thing" in shellHTML(), then add
+  // `case 'my-thing':` below.
   app.addEventListener('click', (e) => {
     const target = e.target as HTMLElement;
     const btn = target.closest<HTMLElement>('button, [data-act]');
@@ -809,6 +868,8 @@ async function boot() {
     }
   });
 
+  // Debug handle for the browser console and automated tests, e.g.
+  //   __cue.updateSettings({ theme: 'nothing' })   __cue.goto(3)   __cue.slides
   (window as any).__cue = { share: { encodeDeck, decodeDeck, parseShareFragment }, view, get parsed() { return parsed; }, get slides() { return slides; }, goto, updateSettings, present, getTheme };
 }
 
@@ -887,6 +948,10 @@ function versionHTML(): string {
   return `<a class="menu-version" data-act="credit" href="${REPO}/commit/${__APP_COMMIT__}" target="_blank" rel="noopener" title="See this version on GitHub">${v} · <span>${__APP_COMMIT__}</span></a>`;
 }
 
+/**
+ * The app's static markup. Element classes here are what the code above looks
+ * up with $('.class'); styles are in styles/app.css.
+ */
 function shellHTML(): string {
   const mac = /Mac|iPhone|iPad/.test(navigator.platform);
   const M = mac ? '⌘' : 'Ctrl+';

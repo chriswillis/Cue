@@ -151,21 +151,27 @@ Every push to `main` builds the app and publishes it to GitHub Pages (`.github/w
 
 ## Structure
 
+**How it all fits together, with diagrams: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).** Picking up the project in a new session? Start with [HANDOFF.md](HANDOFF.md).
+
 ```
 src/
+  main.ts       app shell: boot, render loop, menu, saving, presenter sync (start here)
+  editor.ts     CodeMirror 6 setup, line roles, slide colors, ⇥ marks
   parser.ts     markdown script → slides (visible vs. notes, front matter)
+  markdown.ts   the markdown dialect (markdown-it + iA Presenter extensions)
   render.ts     autolayout, slide DOM, fit-to-slide, scaling
   themes.ts     theme data → CSS custom properties
-  styles/       slide.css (type, grid, layouts), app.css (editor chrome)
-  inspector.ts  the Design panel
+  typefaces.ts  the bundled font library (fonts.ts imports the files)
   flexoki.ts    the Flexoki palette, patterns and swatches
-  typefaces.ts  the bundled font library
-  editor.ts     CodeMirror 6 setup and line-role decorations
-  storage.ts    File System Access + IndexedDB autosave
+  badges.ts     the editor's blue → gold slide colors
+  inspector.ts  the Design panel
+  storage.ts    deck library (IndexedDB) + real .md files
   share.ts      compress + encrypt decks into URL fragments
   share-ui.ts   the Share dialog and password prompt
   present.ts    fullscreen stage
   presenter.ts  presenter window (BroadcastChannel)
+  icons.ts      inline SVG icons
+  styles/       slide.css (type, grid, layouts), app.css (editor chrome)
   sample.md     the welcome deck
 ```
 

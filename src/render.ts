@@ -15,6 +15,27 @@ import { resolveColor } from './flexoki';
 
 export { md };
 
+/*
+ * HOW ONE SLIDE IS MADE (renderSlide)
+ *   1. markdown → HTML (markdown.ts), then split into blocks: headings,
+ *      images and text (toBlocks).
+ *   2. Labels: a small heading right above a bigger one becomes a kicker;
+ *      ###### at the end becomes a footnote (extractLabels).
+ *   3. analyze() finds the title, subtitle, sections (repeated headings) and
+ *      images. chooseLayout() picks a layout from that shape, unless the
+ *      slide says `// layout: x`.
+ *   4. The DOM is built with classes like `theme-swiss layout-split`; the
+ *      actual look lives in styles/slide.css plus per-theme CSS variables.
+ *   5. applyLook() resolves colors, fonts and size into inline CSS variables.
+ *   6. fit() (called by the caller) shrinks the type step by step until
+ *      nothing overflows.
+ *
+ * TO ADD A LAYOUT: add its name to Layout and LAYOUTS, return it from
+ * chooseLayout() (or let people pick it with // layout:), add a `case` in
+ * renderSlide if it needs special DOM, and style `.layout-yourname` in
+ * slide.css.
+ */
+
 export type Layout =
   | 'cover'
   | 'section'

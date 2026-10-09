@@ -11,6 +11,12 @@ import { icons } from './icons';
  * written to the document's front matter by the host via `update`.
  */
 
+/**
+ * What the panel needs from the app (main.ts provides it). The panel reads
+ * through these getters and writes only through update/setLayout, so it stays
+ * a pure view of the document: call sync() and it redraws from the current
+ * state.
+ */
 export interface InspectorHost {
   settings(): Settings;
   slide(): SlideSource;

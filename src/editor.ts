@@ -1,3 +1,27 @@
+/**
+ * editor.ts — the CodeMirror 6 editor and everything it draws.
+ *
+ * CODEMIRROR IN 60 SECONDS
+ *   - EditorState is immutable: the text, the selection and any extra fields.
+ *   - Every change is a transaction; view.dispatch(...) applies one.
+ *   - A StateField is your own data stored in the state and recomputed from
+ *     each transaction (`create` once, `update` on every change).
+ *   - Decorations are how you style text without changing it: line classes,
+ *     marks over ranges, or widgets that replace text (the ⇥ below).
+ *   - Extensions (the array in createEditor) switch features on.
+ *
+ * WHAT THIS FILE ADDS
+ *   parsedField      the deck parsed from the text (parser.ts), always in sync
+ *   decorationsField a class per line by role (heading, on-slide, note,
+ *                    comment…), the slide-number badges, the ⇥ tab marks and
+ *                    each line's slide color (badges.ts)
+ *   caretColor       the cursor takes the color of the slide it's in
+ *   keymap           Tab puts a line on the slide; Enter keeps the tab going
+ *
+ * The visual rules for those classes live in styles/app.css under
+ * "Line roles". To style a new kind of line: give it a role in parser.ts,
+ * map the role to a class in ROLE_CLASS, then add CSS for the class.
+ */
 import { EditorState, StateField, type Extension, RangeSetBuilder } from '@codemirror/state';
 import { EditorView, Decoration, WidgetType, type DecorationSet, keymap, drawSelection, highlightActiveLine, placeholder } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentMore, indentLess, insertNewlineAndIndent } from '@codemirror/commands';
@@ -13,6 +37,7 @@ export const parsedField = StateField.define<ParsedDoc>({
   update: (value, tr) => (tr.docChanged ? parse(tr.state.doc.toString()) : value),
 });
 
+/** Line role (from parser.ts) → CSS class on that line. */
 const ROLE_CLASS: Record<string, string> = {
   frontmatter: 'cm-l-fm',
   separator: 'cm-l-sep',
@@ -50,6 +75,7 @@ class TabMark extends WidgetType {
 }
 const tabMark = Decoration.replace({ widget: new TabMark() });
 
+/** Walks every line once and decides its classes, badge, color and tab mark. */
 function buildDecorations(state: EditorState): DecorationSet {
   const parsed = state.field(parsedField);
   const active = cursorSlide(state);

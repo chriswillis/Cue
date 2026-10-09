@@ -7,6 +7,14 @@
  *  - Browsers without the API (Safari, Firefox) fall back to upload / download.
  */
 
+/*
+ * IndexedDB layout (database "cue", version 2)
+ *   kv     key → value: 'current-deck' (id of the last open deck), plus the
+ *          pre-library 'draft' / 'draft-previous' / 'handle' (read once, to
+ *          migrate)
+ *   decks  one record per deck, keyed by id (see the Deck interface)
+ * Bump the version in db() and handle it in onupgradeneeded if you add a store.
+ */
 const DB = 'cue';
 const STORE = 'kv';
 const DECKS = 'decks';

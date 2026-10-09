@@ -13,6 +13,19 @@
  * A YAML-ish front matter block at the very top stores deck settings.
  */
 
+/*
+ * The parser runs on every keystroke (inside the editor state, see
+ * editor.ts), so it's a single fast pass over the lines with no markdown
+ * parsing: it only decides, line by line, which role a line has and which
+ * slide it belongs to. Real markdown rendering happens later, per slide.
+ *
+ * TO ADD A SLIDE DIRECTIVE like `// dark`: add a regex next to RE_LAYOUT,
+ * read it in the comment branch of parse(), store it on SlideSource and use
+ * it in render.ts.
+ * TO ADD A SETTING: add it to Settings and DEFAULTS, then read/write it in
+ * toSettings() and serializeFrontMatter(). Only non-default values are written.
+ */
+
 export type LineRole =
   | 'frontmatter'
   | 'separator'

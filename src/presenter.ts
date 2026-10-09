@@ -9,6 +9,13 @@ import { renderDeck, mount, renderNotes } from './render';
 
 export const CHANNEL = 'cue-presenter';
 
+/**
+ * Messages between the editor window and the presenter window.
+ *   hello  presenter → editor: "I just opened, send me everything"
+ *   state  editor → presenter: the full text and current slide
+ *   goto   either way: the current slide changed
+ *   bye    editor → presenter: the editor window is closing
+ */
 export type Msg =
   | { type: 'hello' }
   | { type: 'state'; text: string; index: number }

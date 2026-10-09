@@ -7,6 +7,14 @@
  * Every color comes from Flexoki (see flexoki.ts). Sizes are logical pixels
  * on a 1920px-wide slide.
  */
+/*
+ * TO ADD A THEME: copy a define({...}) block below, give it a new id, name and
+ * group, and adjust its fonts (ids from typefaces.ts), type scale and two
+ * palettes. It appears in the Design panel automatically. Theme-specific
+ * styling beyond these values goes in slide.css as `.theme-yourid …`.
+ * New fonts: install a @fontsource package, import it in fonts.ts and add an
+ * entry to typefaces.ts.
+ */
 import { BASE, c } from './flexoki';
 import { stackOf } from './typefaces';
 
