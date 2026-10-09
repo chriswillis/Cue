@@ -21,6 +21,8 @@
   --ed-link: var(--ui-accent);
   --ed-active: oklch(0.22 0.006 270 / 0.028);
   --ed-select: oklch(0.6 0.17 248 / 0.18);
+  --danger-bg: #FFE1D5; /* Flexoki red-50 */
+  --danger-fg: #AF3029; /* Flexoki red-600 */
 
   --font-ui: 'Inter Variable', system-ui, -apple-system, sans-serif;
   --font-editor: 'IBM Plex Mono', ui-monospace, Menlo, monospace;
@@ -45,6 +47,8 @@
     --ed-mark: oklch(0.48 0.006 270);
     --ed-active: oklch(1 0 0 / 0.03);
     --ed-select: oklch(0.7 0.14 248 / 0.28);
+    --danger-bg: #3E1715; /* Flexoki red-900 */
+    --danger-fg: #D14D41; /* Flexoki red-400 */
     color-scheme: dark;
   }
 }
@@ -287,8 +291,24 @@ code { font-family: var(--font-editor); font-size: 0.92em; }
 }
 .menu .recent-del svg { width: 13px; height: 13px; }
 .recent-row:hover .recent-del,
+.recent-row.is-arming .recent-del,
 .menu .recent-del:focus-visible { opacity: 1; }
 .menu .recent-del:hover { background: var(--ui-hover); color: var(--ui-fg); }
+.menu .recent-del { transition: background-color 140ms ease, opacity 140ms ease; }
+
+/* Armed: the × became a trash can; a second click deletes (Flexoki red) */
+.menu .recent-del.is-armed,
+.menu .recent-del.is-armed:hover { background: var(--danger-bg); }
+.menu .recent-del.is-armed svg { width: 15px; height: 15px; color: var(--danger-fg); }
+svg.ph { fill: currentColor; stroke: none; }
+
+/* Deleting: the row fades, then closes up */
+.recent-row {
+  height: var(--row-h, auto);
+  transition: opacity 180ms ease, height 200ms ease 120ms;
+}
+.recent-row.is-leaving { opacity: 0; height: 0; overflow: hidden; pointer-events: none; }
+@media (prefers-reduced-motion: reduce) { .recent-row { transition: none; } }
 @media (hover: none) { .menu .recent-del { opacity: 0.6; } }
 
 .alpha-pop p + p { margin-top: 8px; }

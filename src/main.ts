@@ -362,6 +362,36 @@ async function boot() {
     });
   }
 
+  let disarmTimer = 0;
+  function disarmDelete() {
+    clearTimeout(disarmTimer);
+    app.querySelectorAll<HTMLElement>('.recent-del.is-armed').forEach((b) => {
+      b.classList.remove('is-armed');
+      b.innerHTML = icons.close;
+      b.title = 'Delete';
+      b.closest('.recent-row')?.classList.remove('is-arming');
+    });
+  }
+  function armDelete(btn: HTMLElement) {
+    disarmDelete();
+    const row = btn.closest<HTMLElement>('.recent-row')!;
+    btn.classList.add('is-armed');
+    btn.innerHTML = icons.trash;
+    btn.title = 'Click again to delete';
+    row.classList.add('is-arming');
+    row.addEventListener('mouseleave', disarmDelete, { once: true });
+    disarmTimer = window.setTimeout(disarmDelete, 4000);
+  }
+  function confirmDelete(btn: HTMLElement, id: string) {
+    clearTimeout(disarmTimer);
+    const row = btn.closest<HTMLElement>('.recent-row')!;
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    row.style.setProperty('--row-h', `${row.offsetHeight}px`);
+    void row.offsetHeight; // commit the fixed height so it can animate to 0
+    row.classList.add('is-leaving');
+    window.setTimeout(() => removeDeck(id), reduce ? 0 : 340);
+  }
+
   async function refreshRecent() {
     const box = $('.menu-recent');
     const list = $('.menu-recent-list');
@@ -700,7 +730,10 @@ async function boot() {
         if (btn.dataset.id) switchToDeck(btn.dataset.id);
         break;
       case 'delete-deck':
-        if (btn.dataset.id) removeDeck(btn.dataset.id);
+        // Two steps: × arms the button (it turns into a red trash can), the trash deletes
+        if (!btn.dataset.id) break;
+        if (btn.classList.contains('is-armed')) confirmDelete(btn, btn.dataset.id);
+        else armDelete(btn);
         break;
       case 'alpha':
         toggleAlpha();
