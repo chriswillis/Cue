@@ -1,0 +1,111 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Poster spike</title>
+<style>
+  body { margin: 0; background: #555; }
+  .p { position: relative; overflow: hidden; }
+  .p svg { position: absolute; inset: 0; }
+  .t { position: absolute; margin: 0; line-height: 0.94; text-wrap: balance; }
+  .s { position: absolute; margin: 0; font-weight: 450; letter-spacing: -0.005em; opacity: .82 }
+  .b { position: absolute; margin: 0; }
+  .lbl { position:absolute; right: 14px; bottom: 10px; font: 600 20px monospace; background: #000a; color: #fff; padding: 4px 8px }
+</style></head>
+<body>
+<form id="ui" style="position:sticky;top:0;z-index:2;display:flex;gap:8px;align-items:center;padding:10px 14px;background:#222;color:#eee;font:13px system-ui">
+  <label>Title <input name="title" value="Write the talk." size="28"></label>
+  <label>Sub <input name="sub" value="The slides follow." size="18"></label>
+  <label>Theme <select name="theme"></select></label>
+  <label>Mode <select name="appearance"><option>light</option><option>dark</option></select></label>
+  <label>Aspect <select name="aspect"><option>16:9</option><option>4:3</option><option>9:16</option></select></label>
+  <label>Stage <select name="stage"><option value="">any</option></select></label>
+  <label>Seed <input name="seed" type="number" value="1" style="width:80px"></label>
+  <button type="button" id="shuffle">Shuffle</button>
+  <label><input type="checkbox" name="bg"> Background mode</label>
+</form>
+<div id="out"></div>
+<script type="module">
+import '../src/fonts.ts';
+import { generate, background, STAGE_NAMES } from './poster.ts';
+import { getTheme } from '../src/themes.ts';
+import { stackOf } from '../src/typefaces.ts';
+import { resolveColor } from '../src/flexoki.ts';
+
+const m = document.createElement('div');
+m.style.cssText = 'position:absolute;left:-99999px;top:0;line-height:0.94;text-wrap:balance';
+document.body.appendChild(m);
+const measurer = (font, weight, tracking) => (text, size, width) => {
+  Object.assign(m.style, { fontFamily: font, fontWeight: weight, letterSpacing: tracking, fontSize: size + 'px', width: width + 'px' });
+  m.textContent = text;
+  const r = document.createRange(); r.selectNodeContents(m);
+  const w = Math.max(...[...r.getClientRects()].map(x => x.width));
+  return { w, h: m.getBoundingClientRect().height };
+};
+function themeInfo(themeId, appearance) {
+  const t = getTheme(themeId); const pal = t[appearance];
+  const col = (v) => resolveColor(v, 0).color;
+  return { t, colors: { bg: col(pal.bg), title: col(pal.title ?? pal.fg), accent: col(pal.accent), muted: col(pal.muted) }, fg: col(pal.fg),
+           font: stackOf(t.display), weight: t.displayWeight, tracking: t.displayTracking, body: stackOf(t.body) };
+}
+const SIZES = { '16:9': [1920, 1080], '9:16': [1080, 1920], '4:3': [1600, 1200] };
+
+window.render = async ({ seed, theme, appearance = 'light', title, sub, stage, aspect = '16:9', label = true }) => {
+  const [W, H] = SIZES[aspect];
+  const th = themeInfo(theme, appearance);
+  await document.fonts.load(`${th.weight} 100px ${th.font}`).catch(() => {});
+  await document.fonts.ready;
+  const p = generate({ seed, W, H, title, measure: measurer(th.font, th.weight, th.tracking), theme: th.colors, dark: appearance === 'dark', font: th.font, weight: th.weight, stage });
+  const el = document.createElement('div'); el.className = 'p'; el.style.width = W + 'px'; el.style.height = H + 'px';
+  el.innerHTML = p.svg
+    + `<h1 class="t" style="left:${p.title.x}px;top:${p.title.y}px;width:${p.title.w}px;font-size:${p.title.size}px;color:${p.title.color};font-family:${th.font};font-weight:${th.weight};letter-spacing:${th.tracking}">${title}</h1>`
+    + `<p class="s" style="left:${p.sub.x}px;top:${p.sub.y}px;font-size:${p.sub.size}px;color:${p.title.color};font-family:${th.body}">${sub}</p>`
+    + (label ? `<div class="lbl">${theme} · ${p.meta.stage} · #${seed} · ${p.meta.tries} ${p.meta.tries === 1 ? 'try' : 'tries'}${p.meta.violations.length ? ' · ' + p.meta.violations.join(', ') : ''}</div>` : '');
+  document.getElementById('out').replaceChildren(el);
+  return { ...p.meta, W, H };
+};
+
+window.renderBg = async ({ seed, theme, appearance = 'light', heading, body, stage, opacity = 0.16 }) => {
+  const W = 1920, H = 1080; const th = themeInfo(theme, appearance);
+  await document.fonts.ready;
+  const keepClear = { x: 120, y: 90, w: 1100, h: 560 };
+  const svg = background({ seed, W, H, theme: th.colors, dark: appearance === 'dark', font: th.font, weight: th.weight, stage, keepClear, opacity });
+  const el = document.createElement('div'); el.className = 'p'; el.style.width = W + 'px'; el.style.height = H + 'px';
+  el.innerHTML = svg + `<h2 class="b" style="left:128px;top:104px;width:1100px;font:${th.weight} 104px/1 ${th.font};letter-spacing:${th.tracking};color:${th.colors.title}">${heading}</h2>`
+    + `<p class="b" style="left:128px;top:260px;width:1000px;font:400 46px/1.38 ${th.body};color:${th.fg}">${body}</p>`
+    + `<div class="lbl">background · ${theme} · #${seed}</div>`;
+  document.getElementById('out').replaceChildren(el);
+  return { W, H };
+};
+
+window.stats = async ({ n = 500, theme = 'swiss', appearance = 'light', aspect = '16:9', titles }) => {
+  const [W, H] = SIZES[aspect]; const th = themeInfo(theme, appearance);
+  await document.fonts.ready;
+  const measure = measurer(th.font, th.weight, th.tracking);
+  const out = { n, pass: 0, tries: 0, ms: 0, maxMs: 0, violations: {}, perStage: {} };
+  for (let i = 0; i < n; i++) {
+    const p = generate({ seed: 1000 + i, W, H, title: titles[i % titles.length], measure, theme: th.colors, dark: appearance === 'dark', font: th.font, weight: th.weight });
+    const ok = !p.meta.violations.length;
+    out.pass += ok; out.tries += p.meta.tries; out.ms += p.meta.ms; out.maxMs = Math.max(out.maxMs, p.meta.ms);
+    out.perStage[p.meta.stage] = out.perStage[p.meta.stage] || [0, 0]; out.perStage[p.meta.stage][0]++; out.perStage[p.meta.stage][1] += ok;
+    for (const v of p.meta.violations) out.violations[v] = (out.violations[v] || 0) + 1;
+  }
+  out.tries /= n; out.ms /= n;
+  return out;
+};
+window.STAGES = STAGE_NAMES;
+
+// Interactive controls (the automated scripts call render/renderBg/stats directly)
+const form = document.getElementById('ui');
+for (const t of (await import('../src/themes.ts')).THEMES) form.theme.add(new Option(t.name, t.id));
+for (const st of STAGE_NAMES) form.stage.add(new Option(st, st));
+const draw = () => {
+  const v = Object.fromEntries(new FormData(form));
+  const args = { seed: Number(v.seed), theme: v.theme, appearance: v.appearance, aspect: v.aspect, stage: v.stage || undefined, title: v.title, sub: v.sub };
+  return v.bg ? window.renderBg({ ...args, heading: v.title, body: v.sub }) : window.render(args);
+};
+form.addEventListener('input', draw);
+document.getElementById('shuffle').onclick = () => { form.seed.value = Math.floor(Math.random() * 1e6); draw(); };
+if (navigator.webdriver) form.hidden = true; // automated runs screenshot #out at full size
+else {
+  Object.assign(document.getElementById('out').style, { transformOrigin: '0 0', transform: 'scale(0.5)' });
+  draw();
+}
+</script></body></html>
