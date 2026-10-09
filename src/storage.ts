@@ -1,30 +1,50 @@
 /**
  * Saving.
- *  - Real .md files on disk via the File System Access API (Chrome, Edge, Arc, Opera).
- *  - Every change is also autosaved to IndexedDB, so a reload never loses work.
+ *  - A library of decks in IndexedDB: every deck autosaves as you type, and
+ *    the menu lists them under Recent. Nothing is lost by starting a new one.
+ *  - Real .md files on disk via the File System Access API (Chrome, Edge, Arc,
+ *    Opera). A deck remembers its file, so later edits write straight to it.
  *  - Browsers without the API (Safari, Firefox) fall back to upload / download.
  */
 
 const DB = 'cue';
 const STORE = 'kv';
+const DECKS = 'decks';
+
+let dbPromise: Promise<IDBDatabase> | null = null;
 
 function db(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB, 1);
-    req.onupgradeneeded = () => req.result.createObjectStore(STORE);
+  dbPromise ??= new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB, 2);
+    req.onupgradeneeded = () => {
+      const d = req.result;
+      if (!d.objectStoreNames.contains(STORE)) d.createObjectStore(STORE);
+      if (!d.objectStoreNames.contains(DECKS)) d.createObjectStore(DECKS, { keyPath: 'id' });
+    };
     req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
+    req.onerror = () => {
+      dbPromise = null;
+      reject(req.error);
+    };
   });
+  return dbPromise;
+}
+
+function request<T>(store: string, mode: IDBTransactionMode, op: (s: IDBObjectStore) => IDBRequest): Promise<T> {
+  return db().then(
+    (d) =>
+      new Promise<T>((resolve, reject) => {
+        const tx = d.transaction(store, mode);
+        const req = op(tx.objectStore(store));
+        tx.oncomplete = () => resolve(req.result as T);
+        tx.onerror = () => reject(tx.error);
+      }),
+  );
 }
 
 export async function kvGet<T>(key: string): Promise<T | undefined> {
   try {
-    const d = await db();
-    return await new Promise((resolve, reject) => {
-      const req = d.transaction(STORE).objectStore(STORE).get(key);
-      req.onsuccess = () => resolve(req.result as T);
-      req.onerror = () => reject(req.error);
-    });
+    return await request<T | undefined>(STORE, 'readonly', (s) => s.get(key));
   } catch {
     return undefined;
   }
@@ -32,22 +52,83 @@ export async function kvGet<T>(key: string): Promise<T | undefined> {
 
 export async function kvSet(key: string, value: unknown): Promise<void> {
   try {
-    const d = await db();
-    await new Promise<void>((resolve, reject) => {
-      const tx = d.transaction(STORE, 'readwrite');
-      tx.objectStore(STORE).put(value, key);
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-    });
+    await request(STORE, 'readwrite', (s) => s.put(value, key));
   } catch {
     /* storage unavailable (private mode) — editing still works */
   }
 }
 
+/** The single autosaved draft from before the library existed (read once, to migrate). */
 export interface Draft {
   text: string;
   name: string;
   savedAt: number;
+}
+
+/* ------------------------------------------------------------------ */
+/* Deck library                                                        */
+/* ------------------------------------------------------------------ */
+
+export interface Deck {
+  id: string;
+  name: string; // file name, e.g. "Quarterly review.md"
+  text: string;
+  createdAt: number;
+  savedAt: number;
+  handle?: FileSystemFileHandle | null; // the .md file on disk, when there is one
+}
+
+export const newDeckId = (): string =>
+  typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
+
+/** All decks, most recently edited first. */
+export async function listDecks(): Promise<Deck[]> {
+  try {
+    const all = await request<Deck[]>(DECKS, 'readonly', (s) => s.getAll());
+    return all.sort((a, b) => b.savedAt - a.savedAt);
+  } catch {
+    return [];
+  }
+}
+
+export async function getDeck(id: string): Promise<Deck | undefined> {
+  try {
+    return await request<Deck | undefined>(DECKS, 'readonly', (s) => s.get(id));
+  } catch {
+    return undefined;
+  }
+}
+
+export async function putDeck(deck: Deck): Promise<boolean> {
+  try {
+    await request(DECKS, 'readwrite', (s) => s.put(deck));
+    return true;
+  } catch {
+    return false; // storage unavailable (private mode) — editing still works
+  }
+}
+
+export async function deleteDeck(id: string): Promise<void> {
+  try {
+    await request(DECKS, 'readwrite', (s) => s.delete(id));
+  } catch {
+    /* nothing to delete */
+  }
+}
+
+/**
+ * Ask the browser not to evict our storage when space runs low (and, on
+ * Safari, to treat the site as in use). Harmless where unsupported.
+ */
+let persistAsked = false;
+export async function persistStorage(): Promise<void> {
+  if (persistAsked) return;
+  persistAsked = true;
+  try {
+    if (navigator.storage?.persisted && !(await navigator.storage.persisted())) await navigator.storage.persist?.();
+  } catch {
+    /* not supported */
+  }
 }
 
 export const supportsFS = typeof (window as any).showOpenFilePicker === 'function';
@@ -65,12 +146,15 @@ export class FileStore {
   handle: Handle | null = null;
   name = 'Untitled.md';
 
-  async restore(): Promise<void> {
-    const h = await kvGet<Handle>('handle');
-    if (h) {
-      this.handle = h;
-      this.name = h.name;
-    }
+  /** Point at a deck's file (or none) when switching decks. */
+  use(name: string, handle?: FileSystemFileHandle | null): void {
+    this.handle = (handle as Handle) ?? null;
+    this.name = name;
+  }
+
+  /** The handle saved before the deck library existed (read once, to migrate). */
+  async legacyHandle(): Promise<Handle | null> {
+    return (await kvGet<Handle>('handle')) ?? null;
   }
 
   async open(): Promise<{ text: string; name: string } | null> {
@@ -80,7 +164,6 @@ export class FileStore {
         const file = await h.getFile();
         this.handle = h;
         this.name = h.name;
-        await kvSet('handle', h);
         return { text: await file.text(), name: h.name };
       } catch {
         return null; // cancelled
@@ -132,7 +215,6 @@ export class FileStore {
         const h = await (window as any).showSaveFilePicker({ suggestedName: this.name, types: PICKER_TYPES });
         this.handle = h;
         this.name = h.name;
-        await kvSet('handle', h);
         await this.write(text);
         return 'file';
       } catch {
@@ -165,17 +247,15 @@ export class FileStore {
       if (this.handle.requestPermission && (await this.handle.requestPermission({ mode: 'readwrite' })) !== 'granted') return 'unsupported';
       await this.handle.move(name);
       this.name = this.handle.name;
-      await kvSet('handle', this.handle);
       return 'renamed';
     } catch {
       return 'unsupported';
     }
   }
 
-  async forget(): Promise<void> {
+  forget(): void {
     this.handle = null;
     this.name = 'Untitled.md';
-    await kvSet('handle', null);
   }
 }
 

@@ -248,6 +248,50 @@ code { font-family: var(--font-editor); font-size: 0.92em; }
 .menu .sp { width: 16px; flex: none; }
 .menu kbd { margin-left: auto; font: 500 11.5px var(--font-ui); color: var(--ui-faint); }
 .menu hr { border: 0; border-top: 1px solid var(--ui-line); margin: 5px 4px; }
+
+/* Recent decks */
+.menu-recent[hidden] { display: none; }
+.menu-label {
+  padding: 8px 10px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ui-faint);
+}
+.menu-recent-list { max-height: min(264px, 40vh); overflow-y: auto; overscroll-behavior: contain; }
+.recent-row { position: relative; display: flex; align-items: center; }
+.menu .recent-item { gap: 8px; padding-right: 34px; min-width: 0; }
+.recent-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.recent-time { flex: none; font-size: 11.5px; color: var(--ui-faint); font-variant-numeric: tabular-nums; }
+.menu .recent-item.is-current .recent-name { font-weight: 600; }
+.menu .recent-item.is-current::before {
+  content: '';
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin: 0 5px;
+  border-radius: 50%;
+  background: var(--ui-accent);
+}
+.menu .recent-item:not(.is-current)::before { content: ''; flex: none; width: 16px; }
+.menu .recent-del {
+  position: absolute;
+  right: 4px;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  justify-content: center;
+  opacity: 0;
+  color: var(--ui-muted);
+}
+.menu .recent-del svg { width: 13px; height: 13px; }
+.recent-row:hover .recent-del,
+.menu .recent-del:focus-visible { opacity: 1; }
+.menu .recent-del:hover { background: var(--ui-hover); color: var(--ui-fg); }
+@media (hover: none) { .menu .recent-del { opacity: 0.6; } }
+
+.alpha-pop p + p { margin-top: 8px; }
 .menu .menu-credit {
   display: block;
   padding: 7px 10px 5px;
@@ -692,6 +736,19 @@ code { font-family: var(--font-editor); font-size: 0.92em; }
   z-index: 200;
 }
 .toast.is-on { opacity: 1; transform: translate(-50%, 0); }
+.toast.has-action { display: flex; align-items: center; gap: 14px; padding-right: 8px; }
+.toast.has-action.is-on { pointer-events: auto; }
+.toast-action {
+  border: 0;
+  border-radius: 7px;
+  padding: 5px 10px;
+  background: oklch(1 0 0 / 0.14);
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.toast-action:hover { background: oklch(1 0 0 / 0.24); }
 
 /* ---------- Stage (fullscreen presenting) ---------- */
 

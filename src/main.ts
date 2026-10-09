@@ -7,7 +7,7 @@ import { serializeFrontMatter, type ParsedDoc, type Settings, type SlideSource }
 import { renderSlide, fit, mount, renderNotes, numberSections, ASPECTS } from './render';
 import { Inspector } from './inspector';
 import { injectThemeCSS, getTheme } from './themes';
-import { FileStore, kvGet, kvSet, download, supportsFS, type Draft } from './storage';
+import { FileStore, kvGet, kvSet, download, listDecks, getDeck, putDeck, deleteDeck, newDeckId, persistStorage, type Deck, type Draft } from './storage';
 import { Stage } from './present';
 import { bootPresenter, CHANNEL, type Msg } from './presenter';
 import { icons } from './icons';
@@ -22,6 +22,50 @@ if (location.hash === '#presenter') {
   bootPresenter();
 } else {
   boot();
+}
+
+const SAMPLE_NAME = 'Welcome to Cue.md';
+
+/** The deck to open at start: the last one used, else the most recent. */
+async function loadStartDeck(): Promise<Deck | null> {
+  const id = await kvGet<string>('current-deck');
+  const byId = id ? await getDeck(id) : undefined;
+  if (byId) return byId;
+  const all = await listDecks();
+  if (all.length) return all[0];
+  // First run with the library: bring over the single draft (and the one a
+  // shared link set aside) from before it existed.
+  const migrated: Deck[] = [];
+  const legacyHandle = await new FileStore().legacyHandle();
+  for (const [key, handle] of [['draft', legacyHandle], ['draft-previous', null]] as const) {
+    const d = await kvGet<Draft>(key);
+    if (!d?.text?.trim()) continue;
+    const at = d.savedAt || Date.now();
+    const deck: Deck = { id: newDeckId(), name: d.name || 'Untitled.md', text: d.text, createdAt: at, savedAt: at, handle };
+    if (await putDeck(deck)) migrated.push(deck);
+  }
+  if (!migrated.length) return null;
+  const first = migrated.sort((a, b) => b.savedAt - a.savedAt)[0];
+  await kvSet('current-deck', first.id);
+  return first;
+}
+
+/** A deck's name in lists. Unnamed decks go by their first # heading. */
+function deckLabel(d: Deck): string {
+  const name = d.name.replace(/\.(md|markdown|txt)$/i, '');
+  if (name !== 'Untitled' || d.handle) return name;
+  const title = /^#\s+(.+)$/m.exec(d.text)?.[1]?.replace(/[*_`]/g, '').trim();
+  return title && title !== 'Untitled' ? title : name;
+}
+
+/** "just now", "5 min ago", "3 h ago", "yesterday", "Oct 3" */
+function ago(t: number): string {
+  const s = (Date.now() - t) / 1000;
+  if (s < 60) return 'just now';
+  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
+  if (s < 172800) return 'yesterday';
+  return new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
 const BLANK_DOC = `---
@@ -48,12 +92,13 @@ async function boot() {
 
   /* ---------------- state ---------------- */
   const files = new FileStore();
-  if (!sharedMode) await files.restore();
-  const draft = sharedMode ? undefined : await kvGet<Draft>('draft');
-  // Reopen the last draft; start with the sample deck when there is none (or it's empty).
-  const initialText = sharedDeck?.markdown ?? (draft?.text?.trim() ? draft.text : sample);
+  // The deck being edited. null until a new deck (or the sample) is first edited.
+  let deck: Deck | null = sharedMode ? null : await loadStartDeck();
+  // Reopen the last deck; start with the sample deck when there is none (or it's empty).
+  const initialText = sharedDeck?.markdown ?? (deck?.text?.trim() ? deck.text : sample);
   if (sharedDeck) files.name = sharedDeck.name;
-  else if (draft?.name) files.name = draft.name;
+  else if (deck) files.use(deck.name, deck.handle);
+  else files.name = SAMPLE_NAME;
 
   let parsed: ParsedDoc;
   let slides: HTMLElement[] = [];
@@ -183,12 +228,17 @@ async function boot() {
   /* ---------------- editor ---------------- */
   let saveTimer = 0;
   let broadcastTimer = 0;
+  let dirty = false; // edits not yet written to the library
+  let loading = false; // replacing the text programmatically (switching decks)
   view = createEditor($('.editor'), initialText, {
     onChange: (text) => {
-      setStatus('Edited');
       scheduleRender();
-      clearTimeout(saveTimer);
-      saveTimer = window.setTimeout(() => autosave(text), 600);
+      if (!loading) {
+        setStatus('Edited');
+        dirty = true;
+        clearTimeout(saveTimer);
+        saveTimer = window.setTimeout(() => autosave(text), 600);
+      }
       clearTimeout(broadcastTimer);
       broadcastTimer = window.setTimeout(() => channel.postMessage({ type: 'state', text, index: current } satisfies Msg), 300);
     },
@@ -199,15 +249,17 @@ async function boot() {
   });
   renderAll();
   setDocName();
-  setStatus(sharedMode ? 'Opened from a link' : draft ? 'Restored' : supportsFS ? 'Not saved yet' : 'Draft in browser');
+  setStatus(sharedMode ? 'Opened from a link' : deck ? 'Restored' : 'Not saved yet');
   $('.shared-pill').hidden = !sharedMode;
 
-  /** Turn a shared deck into the person's own: it becomes the browser draft. */
-  async function leaveSharedMode() {
+  /**
+   * Stop treating the open deck as a shared one. Whatever is saved next becomes
+   * a new deck in the library; nothing already there is touched.
+   */
+  function leaveSharedMode() {
     if (!sharedMode) return;
     sharedMode = false;
-    const previous = await kvGet<Draft>('draft');
-    if (previous) await kvSet('draft-previous', previous);
+    deck = null;
     clearHash();
     $('.shared-pill').hidden = true;
   }
@@ -225,12 +277,132 @@ async function boot() {
     download: () => download(files.name, view.state.doc.toString()),
   });
 
+  /** Write the open deck to the library (creating its entry on first save). */
+  async function persistCurrent(text = view.state.doc.toString()): Promise<boolean> {
+    if (sharedMode) return false;
+    dirty = false;
+    // An untouched blank page or sample isn't worth a library entry
+    if (!deck && (text === BLANK_DOC || text === sample)) return true;
+    const now = Date.now();
+    if (!deck) deck = { id: newDeckId(), name: files.name, text, createdAt: now, savedAt: now, handle: files.handle };
+    else Object.assign(deck, { name: files.name, text, savedAt: now, handle: files.handle });
+    const ok = await putDeck(deck);
+    if (ok) {
+      await kvSet('current-deck', deck.id);
+      persistStorage();
+    }
+    return ok;
+  }
+
+  /** Save any pending edits now (before switching decks or leaving the page). */
+  async function flushSave() {
+    clearTimeout(saveTimer);
+    if (dirty) await autosave(view.state.doc.toString());
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') flushSave();
+  });
+
+  /** Replace the editor's text without counting it as an edit. */
+  function loadText(text: string) {
+    loading = true;
+    try {
+      setText(view, text);
+    } finally {
+      loading = false;
+    }
+    dirty = false;
+    current = 0;
+    setDocName();
+    renderAll();
+    revealSlide(view, 0);
+  }
+
+  async function switchToDeck(id: string) {
+    if (deck?.id === id && !sharedMode) return;
+    await flushSave();
+    const d = await getDeck(id);
+    if (!d) {
+      toast('That deck is no longer here.');
+      return;
+    }
+    leaveSharedMode();
+    deck = d;
+    files.use(d.name, d.handle);
+    loadText(d.text);
+    await kvSet('current-deck', d.id);
+    setStatus(d.handle ? `Saved · ${stripExt(d.name)}` : 'Saved in browser');
+  }
+
+  async function removeDeck(id: string) {
+    const d = await getDeck(id);
+    if (!d) return;
+    await deleteDeck(id);
+    if (deck?.id === id) {
+      // Deleting the open deck: move to the next most recent one, or a blank page
+      clearTimeout(saveTimer);
+      dirty = false;
+      deck = null;
+      const next = (await listDecks())[0];
+      if (next) await switchToDeck(next.id);
+      else {
+        files.forget();
+        loadText(BLANK_DOC);
+        setStatus('Not saved yet');
+      }
+    }
+    refreshRecent();
+    toast(`Deleted “${deckLabel(d)}”`, {
+      label: 'Undo',
+      run: async () => {
+        await putDeck(d);
+        refreshRecent();
+        toast(`Restored “${deckLabel(d)}”`);
+      },
+    });
+  }
+
+  async function refreshRecent() {
+    const box = $('.menu-recent');
+    const list = $('.menu-recent-list');
+    const decks = await listDecks();
+    box.hidden = decks.length === 0;
+    list.replaceChildren(
+      ...decks.map((d) => {
+        const row = document.createElement('div');
+        row.className = 'recent-row';
+        const open = document.createElement('button');
+        open.setAttribute('role', 'menuitem');
+        open.className = 'recent-item' + (d.id === deck?.id && !sharedMode ? ' is-current' : '');
+        open.dataset.act = 'open-deck';
+        open.dataset.id = d.id;
+        const name = document.createElement('span');
+        name.className = 'recent-name';
+        name.textContent = deckLabel(d);
+        const time = document.createElement('span');
+        time.className = 'recent-time';
+        time.textContent = ago(d.savedAt);
+        open.append(name, time);
+        open.title = `${deckLabel(d)} · edited ${new Date(d.savedAt).toLocaleString()}`;
+        const del = document.createElement('button');
+        del.className = 'recent-del';
+        del.dataset.act = 'delete-deck';
+        del.dataset.id = d.id;
+        del.setAttribute('aria-label', `Delete ${stripExt(d.name)}`);
+        del.title = 'Delete';
+        del.innerHTML = icons.close;
+        row.append(open, del);
+        return row;
+      }),
+    );
+  }
+
   async function autosave(text: string) {
     if (sharedMode) {
       setStatus('Shared deck · edits aren’t saved');
       return;
     }
-    await kvSet('draft', { text, name: files.name, savedAt: Date.now() } satisfies Draft);
+    const stored = await persistCurrent(text);
     if (files.handle && (await files.canWriteSilently())) {
       try {
         await files.write(text);
@@ -240,7 +412,7 @@ async function boot() {
         /* fall back to draft status */
       }
     }
-    setStatus(files.handle ? 'Draft saved · ⌘S to write file' : 'Draft saved in browser');
+    setStatus(!stored ? 'Couldn’t save in this browser' : files.handle ? 'Saved in browser · ⌘S to write file' : 'Saved in browser');
   }
 
   function setStatus(s: string) {
@@ -276,7 +448,7 @@ async function boot() {
       return;
     }
     setDocName();
-    if (!sharedMode) await kvSet('draft', { text: view.state.doc.toString(), name: files.name, savedAt: Date.now() } satisfies Draft);
+    if (!sharedMode) await persistCurrent();
     toast(files.handle ? `Renamed file to ${files.name}` : `Renamed to ${stripExt(files.name)}`);
   }
   nameInput.addEventListener('input', sizeNameInput);
@@ -395,36 +567,48 @@ async function boot() {
 
   /* ---------------- file actions ---------------- */
   async function doOpen() {
+    await flushSave();
+    const opened = { handle: files.handle, name: files.name };
     const r = await files.open();
-    if (!r) return;
-    await leaveSharedMode();
-    setText(view, r.text);
-    current = 0;
-    setDocName();
-    renderAll();
-    await kvSet('draft', { text: r.text, name: files.name, savedAt: Date.now() } satisfies Draft);
-    setStatus(files.handle ? 'Saved' : 'Opened · edits stay in browser');
+    if (!r) {
+      files.use(opened.name, opened.handle); // cancelled: stay on the current deck
+      return;
+    }
+    leaveSharedMode();
+    // Reopening a file that's already in the library continues that deck
+    let existing: Deck | null = null;
+    if (files.handle) {
+      for (const d of await listDecks()) {
+        if (d.handle && (await (d.handle as any).isSameEntry?.(files.handle).catch(() => false))) {
+          existing = d;
+          break;
+        }
+      }
+    }
+    deck = existing;
+    loadText(r.text);
+    await persistCurrent(r.text);
+    setStatus(files.handle ? 'Saved' : 'Opened · edits are saved in this browser');
   }
   async function doSave(as = false) {
     const text = view.state.doc.toString();
     const r = as ? await files.saveAs(text) : await files.save(text);
     if (r === 'cancelled') return;
-    await leaveSharedMode();
+    leaveSharedMode();
     setDocName();
-    await kvSet('draft', { text, name: files.name, savedAt: Date.now() } satisfies Draft);
+    await persistCurrent(text);
     setStatus(r === 'file' ? 'Saved' : 'Downloaded');
     toast(r === 'file' ? `Saved ${files.name}` : `Downloaded ${files.name}`);
   }
-  async function doNew() {
-    const dirty = $('.doc-status').textContent !== 'Saved';
-    if (dirty && !confirm('Start a new presentation? Unsaved changes to this one will be lost.')) return;
-    await leaveSharedMode();
-    await files.forget();
-    setText(view, BLANK_DOC);
-    current = 0;
-    setDocName();
-    renderAll();
-    revealSlide(view, 0);
+  /** Start a fresh deck. The current one stays in the library (menu → Recent). */
+  async function doNew(text = BLANK_DOC, name = 'Untitled.md') {
+    await flushSave();
+    leaveSharedMode();
+    deck = null;
+    files.forget();
+    files.name = name;
+    loadText(text);
+    setStatus('Not saved yet');
   }
   function doPrint() {
     const root = document.getElementById('print-root') ?? document.body.appendChild(Object.assign(document.createElement('div'), { id: 'print-root' }));
@@ -509,11 +693,14 @@ async function boot() {
         break;
       case 'sample':
         closeMenu();
-        if (confirm('Replace the current text with the sample deck?')) {
-          setText(view, sample);
-          current = 0;
-          renderAll();
-        }
+        doNew(sample, SAMPLE_NAME);
+        break;
+      case 'open-deck':
+        closeMenu();
+        if (btn.dataset.id) switchToDeck(btn.dataset.id);
+        break;
+      case 'delete-deck':
+        if (btn.dataset.id) removeDeck(btn.dataset.id);
         break;
       case 'alpha':
         toggleAlpha();
@@ -537,6 +724,7 @@ async function boot() {
   function toggleMenu() {
     const m = $('.menu');
     m.hidden = !m.hidden;
+    if (!m.hidden) refreshRecent();
     $('[data-act="menu"]').setAttribute('aria-expanded', String(!m.hidden));
   }
   function toggleAlpha(force?: boolean) {
@@ -549,6 +737,8 @@ async function boot() {
   document.addEventListener('pointerdown', (e) => {
     const t = e.target as HTMLElement;
     if (!$('.alpha-pop').hidden && !t.closest('.alpha-pop, [data-act="alpha"]')) toggleAlpha(false);
+    // Clicking anywhere outside the menu closes it (the toast's Undo included)
+    if (!$('.menu').hidden && !t.closest('.menu, [data-act="menu"], .toast')) closeMenu();
   });
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !$('.alpha-pop').hidden) toggleAlpha(false);
@@ -629,7 +819,7 @@ function cap(s: string) {
 }
 
 let toastTimer = 0;
-function toast(msg: string) {
+function toast(msg: string, action?: { label: string; run: () => void }) {
   let t = document.querySelector<HTMLElement>('.toast');
   if (!t) {
     t = document.createElement('div');
@@ -637,10 +827,21 @@ function toast(msg: string) {
     t.setAttribute('role', 'status');
     document.body.appendChild(t);
   }
-  t.textContent = msg;
+  t.replaceChildren(document.createTextNode(msg));
+  if (action) {
+    const b = document.createElement('button');
+    b.className = 'toast-action';
+    b.textContent = action.label;
+    b.onclick = () => {
+      t!.classList.remove('is-on');
+      action.run();
+    };
+    t.appendChild(b);
+  }
+  t.classList.toggle('has-action', !!action);
   t.classList.add('is-on');
   clearTimeout(toastTimer);
-  toastTimer = window.setTimeout(() => t!.classList.remove('is-on'), 2400);
+  toastTimer = window.setTimeout(() => t!.classList.remove('is-on'), action ? 6000 : 2400);
 }
 
 /** `Cue 0.1.0 · a1b2c3d`, linking to the exact commit that's running. */
@@ -662,7 +863,7 @@ function shellHTML(): string {
         <button class="icon-btn" data-act="menu" aria-label="File menu" aria-haspopup="menu" aria-expanded="false">${icons.menu}</button>
         <button class="alpha-pill" data-act="alpha" aria-haspopup="dialog" aria-expanded="false" title="Cue is in alpha">Alpha</button>
         <div class="alpha-pop" role="dialog" aria-label="About this alpha" hidden>
-          <p><strong>Cue is early.</strong> Your decks are saved in this browser and to any .md file you save. Keep a copy of anything important. Things may change.</p>
+          <p><strong>Cue is early.</strong> Your decks are saved in this browser (menu → Recent) and to any .md file you save. Keep a copy of anything important. Things may change.</p><p>On iPhone and iPad, add Cue to your Home Screen so Safari keeps your decks.</p>
         </div>
         <div class="doc-name"><button class="doc-name-text" data-act="rename" title="Rename presentation">Untitled</button><input class="doc-name-input" type="text" aria-label="Presentation name" spellcheck="false" maxlength="120" hidden /><span class="doc-status"></span></div>
         <div class="shared-pill" hidden>
@@ -673,6 +874,10 @@ function shellHTML(): string {
         <div class="menu" role="menu" hidden>
           <button role="menuitem" data-act="new">${icons.file}<span>New</span></button>
           <button role="menuitem" data-act="open">${icons.open}<span>Open…</span><kbd>${M}O</kbd></button>
+          <div class="menu-recent" hidden>
+            <div class="menu-label">Recent</div>
+            <div class="menu-recent-list"></div>
+          </div>
           <hr />
           <button role="menuitem" data-act="save">${icons.save}<span>Save</span><kbd>${M}S</kbd></button>
           <button role="menuitem" data-act="save-as"><span class="sp"></span><span>Save as…</span><kbd>${M}⇧S</kbd></button>

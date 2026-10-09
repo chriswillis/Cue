@@ -113,9 +113,10 @@ footer: "{title} |  | {count}"     # {title} {number} {count} {date} or any text
 
 ## Saving
 
-- In Chrome, Edge and Arc, **Open** and **Save** read and write real `.md` files on disk through the File System Access API. Once you've saved a file, later edits autosave to it.
-- Every keystroke is also autosaved to the browser's IndexedDB, so a reload never loses work.
+- **Every deck is kept in the browser.** It autosaves as you type into IndexedDB. **New** starts a fresh deck without touching the others, and the menu lists them all under **Recent**, newest first, so you can switch between them. Hover a deck and click × to delete it; a toast offers **Undo**. A deck that hasn't been named goes by its first `#` heading.
+- **Real files.** In Chrome, Edge and Arc, **Open** and **Save** read and write `.md` files on disk through the File System Access API. A deck remembers its file, so later edits write straight to it, and reopening the same file continues the same deck.
 - Safari and Firefox fall back to file upload and **Download .md**.
+- Cue asks the browser to keep its storage (`navigator.storage.persist()`). Safari still clears a website's data after about seven days without a visit. On iPhone and iPad, adding Cue to the Home Screen avoids that.
 - **Print or save as PDF** exports one slide per page.
 
 ## Sharing a link
@@ -131,7 +132,7 @@ There are two kinds of link:
 - **Key in the link** (`#v1k.<key>.<data>`), the default. One click opens it. Anyone who has the link can read the deck.
 - **Password** (`#v1p.<salt>.<data>`). The key is derived from a password with PBKDF2-SHA-256 at 600,000 iterations. Send the password separately.
 
-Opening a link starts the deck in a **shared** state. Edits stay in that tab, and your own draft and files are never touched until you choose **Save a copy**. If saving a copy replaces your browser draft, the old draft is kept in IndexedDB as `draft-previous`.
+Opening a link starts the deck in a **shared** state. Edits stay in that tab, and your own decks and files are never touched. **Save a copy** adds it to your library as a new deck.
 
 **Link length:** Markdown compresses about 2.5–3.5×, so a link runs about 0.4–0.6 characters per byte of markdown. Under about 2,000 characters a link works in most email, chat and SMS apps. Between 2,000 and 8,000 the dialog warns that some apps may cut it short. Above 8,000 it suggests sending the `.md` file instead, and it won't make links over 2 MB. Links that expand to more than 20 MB are refused when opened.
 
