@@ -257,6 +257,52 @@ code { font-family: var(--font-editor); font-size: 0.92em; }
   text-decoration: none;
 }
 .menu .menu-credit:hover { background: var(--ui-hover); color: var(--ui-fg); }
+.menu .menu-version {
+  display: block;
+  padding: 2px 10px 6px;
+  border-radius: 7px;
+  font-size: 11px;
+  color: var(--ui-faint);
+  text-decoration: none;
+  font-variant-numeric: tabular-nums;
+}
+.menu .menu-version span { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 10.5px; }
+.menu a.menu-version:hover { color: var(--ui-muted); }
+
+/* Alpha: a quiet label by the menu button, with a short note */
+.alpha-pill {
+  flex: none;
+  height: 20px;
+  padding: 0 7px;
+  border: 1px solid var(--ui-line);
+  border-radius: 999px;
+  background: transparent;
+  font-size: 10.5px;
+  font-weight: 550;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ui-muted);
+  cursor: pointer;
+}
+.alpha-pill:hover,
+.alpha-pill[aria-expanded="true"] { background: var(--ui-hover); color: var(--ui-fg); }
+.alpha-pop {
+  position: absolute;
+  top: 40px;
+  left: 36px;
+  width: 280px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--ui-bg);
+  box-shadow: var(--ui-shadow), 0 0 0 1px var(--ui-line);
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--ui-muted);
+  z-index: 31;
+}
+.alpha-pop[hidden] { display: none; }
+.alpha-pop p { margin: 0; }
+.alpha-pop strong { color: var(--ui-fg); font-weight: 600; }
 
 /* ---------- Slide frames (shared) ---------- */
 

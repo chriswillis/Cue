@@ -515,6 +515,9 @@ async function boot() {
           renderAll();
         }
         break;
+      case 'alpha':
+        toggleAlpha();
+        break;
       case 'credit':
         closeMenu(); // the link itself opens the repository in a new tab
         break;
@@ -536,6 +539,21 @@ async function boot() {
     m.hidden = !m.hidden;
     $('[data-act="menu"]').setAttribute('aria-expanded', String(!m.hidden));
   }
+  function toggleAlpha(force?: boolean) {
+    const pop = $('.alpha-pop');
+    const open = force ?? pop.hidden;
+    pop.hidden = !open;
+    $('[data-act="alpha"]').setAttribute('aria-expanded', String(open));
+    if (open) closeMenu();
+  }
+  document.addEventListener('pointerdown', (e) => {
+    const t = e.target as HTMLElement;
+    if (!$('.alpha-pop').hidden && !t.closest('.alpha-pop, [data-act="alpha"]')) toggleAlpha(false);
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !$('.alpha-pop').hidden) toggleAlpha(false);
+  });
+
   function closeMenu() {
     $('.menu').hidden = true;
     $('[data-act="menu"]').setAttribute('aria-expanded', 'false');
@@ -625,6 +643,15 @@ function toast(msg: string) {
   toastTimer = window.setTimeout(() => t!.classList.remove('is-on'), 2400);
 }
 
+/** `Cue 0.1.0 · a1b2c3d`, linking to the exact commit that's running. */
+function versionHTML(): string {
+  // Kept inside the function: boot() runs before module-level constants below it exist
+  const REPO = 'https://github.com/chriswillis/Cue';
+  const v = `Cue ${__APP_VERSION__}`;
+  if (!__APP_COMMIT__) return `<div class="menu-version">${v}</div>`;
+  return `<a class="menu-version" data-act="credit" href="${REPO}/commit/${__APP_COMMIT__}" target="_blank" rel="noopener" title="See this version on GitHub">${v} · <span>${__APP_COMMIT__}</span></a>`;
+}
+
 function shellHTML(): string {
   const mac = /Mac|iPhone|iPad/.test(navigator.platform);
   const M = mac ? '⌘' : 'Ctrl+';
@@ -633,6 +660,10 @@ function shellHTML(): string {
     <header class="bar">
       <div class="bar-left">
         <button class="icon-btn" data-act="menu" aria-label="File menu" aria-haspopup="menu" aria-expanded="false">${icons.menu}</button>
+        <button class="alpha-pill" data-act="alpha" aria-haspopup="dialog" aria-expanded="false" title="Cue is in alpha">Alpha</button>
+        <div class="alpha-pop" role="dialog" aria-label="About this alpha" hidden>
+          <p><strong>Cue is early.</strong> Your decks are saved in this browser and to any .md file you save. Keep a copy of anything important. Things may change.</p>
+        </div>
         <div class="doc-name"><button class="doc-name-text" data-act="rename" title="Rename presentation">Untitled</button><input class="doc-name-input" type="text" aria-label="Presentation name" spellcheck="false" maxlength="120" hidden /><span class="doc-status"></span></div>
         <div class="shared-pill" hidden>
           <span>Shared deck</span>
@@ -653,6 +684,7 @@ function shellHTML(): string {
           <button role="menuitem" data-act="help">${icons.help}<span>Markdown guide</span></button>
           <hr />
           <a role="menuitem" class="menu-credit" data-act="credit" href="https://github.com/chriswillis/Cue" target="_blank" rel="noopener" title="Cue on GitHub">Made with 🩷 by Chris Willis</a>
+          ${versionHTML()}
         </div>
       </div>
       <div class="seg views" role="tablist" aria-label="View">
