@@ -515,6 +515,9 @@ async function boot() {
           renderAll();
         }
         break;
+      case 'credit':
+        closeMenu(); // the link itself opens the repository in a new tab
+        break;
       case 'help':
         closeMenu();
         toggleInspector(true);
@@ -648,6 +651,8 @@ function shellHTML(): string {
           <hr />
           <button role="menuitem" data-act="sample"><span class="sp"></span><span>Load sample deck</span></button>
           <button role="menuitem" data-act="help">${icons.help}<span>Markdown guide</span></button>
+          <hr />
+          <a role="menuitem" class="menu-credit" data-act="credit" href="https://github.com/chriswillis/Cue" target="_blank" rel="noopener" title="Cue on GitHub">Made with 🩷 by Chris Willis</a>
         </div>
       </div>
       <div class="seg views" role="tablist" aria-label="View">

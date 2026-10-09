@@ -4,12 +4,12 @@ appearance: light
 aspect: 16:9
 ---
 
-# Write the talk.
-### The slides follow.
+# Welcome to Cue.
+### Write your talk. Cue the slides.
 
-Welcome to Cue. This is a script, not a slide editor. Write what you want to say, and the slides design themselves.
-
-Paragraphs like this one are speaker notes. Only you see them, in presenter view.
+- Start with what you want to say. Watch Cue turn them into slides as you write.
+- Paragraphs like this one (not indented) are speaker notes. Only you see them, in Presenter view.
+- Use it for anything you want to remember while you're up there. You got this.
 
 ---
 
