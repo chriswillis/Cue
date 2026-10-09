@@ -125,6 +125,7 @@ export function inspectorHTML(): string {
           <dt><code>###### Note</code></dt><dd>At the end of a slide: a footnote</dd>
           <dt><code>// dark</code></dt><dd>Show this slide dark (or <code>// light</code>, <code>// invert</code>)</dd>
           <dt><code>// note</code></dt><dd>Comment, hidden everywhere</dd>
+          <dt>Colors</dt><dd>Slide text warms up from blue to gold as the deck goes on, so you can tell where you are. Only you see them.</dd>
           <dt><code>⇥ &gt; Quote</code></dt><dd>A quote alone gets the quote layout</dd>
           <dt><code>==text==</code></dt><dd>Highlight</dd>
           <dt><code>m^2</code> <code>H~2~O</code></dt><dd>Superscript and subscript</dd>

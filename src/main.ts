@@ -11,7 +11,7 @@ import { FileStore, kvGet, kvSet, download, listDecks, getDeck, putDeck, deleteD
 import { Stage } from './present';
 import { bootPresenter, CHANNEL, type Msg } from './presenter';
 import { icons } from './icons';
-import { slideColor } from './badges';
+import { slideVars } from './badges';
 import { parseShareFragment, decodeDeck, encodeDeck, ShareError, type SharedDeck } from './share';
 import { ShareDialog, askPassword, showLinkError } from './share-ui';
 import sample from './sample.md?raw';
@@ -160,7 +160,8 @@ async function boot() {
         b.className = 'thumb' + (i === current ? ' is-current' : '');
         b.dataset.i = String(i);
         b.setAttribute('aria-label', `Slide ${i + 1}`);
-        b.innerHTML = `<span class="thumb-num" style="--badge: ${slideColor(i)}">${i + 1}</span><div class="frame"></div>`;
+        b.setAttribute('style', slideVars(i, slides.length));
+        b.innerHTML = `<span class="thumb-num">${i + 1}</span><div class="frame"></div>`;
         mount(b.querySelector('.frame')!, node.cloneNode(true) as HTMLElement, parsed.settings);
         return b;
       }),

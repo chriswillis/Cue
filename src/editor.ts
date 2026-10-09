@@ -1,11 +1,11 @@
 import { EditorState, StateField, type Extension, RangeSetBuilder } from '@codemirror/state';
-import { EditorView, Decoration, type DecorationSet, keymap, drawSelection, highlightActiveLine, placeholder } from '@codemirror/view';
+import { EditorView, Decoration, WidgetType, type DecorationSet, keymap, drawSelection, highlightActiveLine, placeholder } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentMore, indentLess, insertNewlineAndIndent } from '@codemirror/commands';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { HighlightStyle, syntaxHighlighting, indentUnit } from '@codemirror/language';
 import { tags as t } from '@lezer/highlight';
 import { parse, type ParsedDoc } from './parser';
-import { slideColor } from './badges';
+import { slideVars } from './badges';
 
 /** The parsed deck lives in editor state so it's always in sync with the text. */
 export const parsedField = StateField.define<ParsedDoc>({
@@ -32,6 +32,23 @@ function cursorSlide(state: EditorState): number {
 }
 
 const SKIP_FOR_BADGE = new Set(['frontmatter', 'separator', 'blank', 'comment']);
+/** Lines that appear on the slide: they take their slide's color. */
+const ON_SLIDE = new Set(['heading', 'visible', 'image', 'code']);
+
+/** The leading tab of an on-slide line, drawn as a faint ⇥ that hangs in the margin. */
+class TabMark extends WidgetType {
+  eq() {
+    return true;
+  }
+  toDOM() {
+    const span = document.createElement('span');
+    span.className = 'cm-tab-mark';
+    span.textContent = '⇥';
+    span.setAttribute('aria-hidden', 'true');
+    return span;
+  }
+}
+const tabMark = Decoration.replace({ widget: new TabMark() });
 
 function buildDecorations(state: EditorState): DecorationSet {
   const parsed = state.field(parsedField);
@@ -50,24 +67,33 @@ function buildDecorations(state: EditorState): DecorationSet {
     }
   }
 
+  const total = parsed.slides.length;
   for (let i = 1; i <= doc.lines; i++) {
     const role = parsed.roles[i - 1];
     const slide = badgeLine.get(i - 1);
     let cls = ROLE_CLASS[role] ?? '';
     if (!cls && slide === undefined) continue;
     const line = doc.line(i);
-    if (line.text.startsWith('\t') && role !== 'separator') cls += ' cm-l-tab';
+    const tabbed = line.text.startsWith('\t') && role !== 'separator';
+    if (tabbed) cls += ' cm-l-tab';
     const attrs: Record<string, string> = {};
+    // On-slide lines and badges carry their slide's color (see badges.ts)
+    if (ON_SLIDE.has(role) || slide !== undefined) attrs.style = slideVars(parsed.slideOfLine[i - 1] ?? 0, total);
     if (slide !== undefined) {
       cls += ' cm-l-badge' + (slide === active ? ' is-active' : '');
       attrs['data-slide'] = String(slide + 1);
-      attrs.style = `--badge: ${slideColor(slide)}`;
     }
     attrs.class = cls.trim();
     builder.add(line.from, line.from, Decoration.line({ attributes: attrs }));
+    if (tabbed && ON_SLIDE.has(role)) builder.add(line.from, line.from + 1, tabMark);
   }
   return builder.finish();
 }
+
+/** The cursor takes the color of the slide it's in (vars on the editor root). */
+const caretColor = EditorView.editorAttributes.compute(['selection', parsedField], (state) => ({
+  style: slideVars(cursorSlide(state), state.field(parsedField).slides.length),
+}));
 
 const decorationsField = StateField.define<DecorationSet>({
   create: buildDecorations,
@@ -80,11 +106,11 @@ const highlight = HighlightStyle.define([
   { tag: t.heading1, fontWeight: '700' },
   { tag: t.heading2, fontWeight: '700' },
   { tag: [t.heading3, t.heading4, t.heading5, t.heading6], fontWeight: '650' },
-  { tag: t.processingInstruction, color: 'var(--ed-mark)', fontWeight: '400' },
+  { tag: t.processingInstruction, color: 'var(--ed-syntax, var(--ed-mark))', fontWeight: '400' },
   { tag: t.strong, fontWeight: '700' },
   { tag: t.emphasis, fontStyle: 'italic' },
   { tag: t.link, color: 'var(--ed-link)' },
-  { tag: t.url, color: 'var(--ed-mark)' },
+  { tag: t.url, color: 'var(--ed-syntax, var(--ed-mark))' },
   { tag: t.quote, fontStyle: 'italic' },
   { tag: t.contentSeparator, color: 'var(--ed-mark)' },
   { tag: [t.meta, t.comment], color: 'var(--ed-mark)' },
@@ -119,6 +145,7 @@ export function createEditor(parent: HTMLElement, text: string, hooks: EditorHoo
   const extensions: Extension[] = [
     parsedField,
     decorationsField,
+    caretColor,
     history(),
     drawSelection(),
     highlightActiveLine(),

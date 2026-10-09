@@ -28,7 +28,9 @@ npm run build      # static site in dist/, deploy anywhere
 | `// layout: split` | Overrides the automatic layout |
 | `// dark`, `// light`, `// invert` | Shows this one slide in the other appearance |
 
-In the editor, a blue dot in the margin marks every line the audience will see. Notes are dimmed.
+In the editor, everything the audience will see is written in its slide's color, and tab-indented lines show a faint ⇥. Notes are plain ink and `//` comments are grey.
+
+The colors warm up as the deck goes on, telling you where you are in the talk: **blue** is a cold start, **purple** is warming up, **magenta** is getting warmer, **red** is when things get hot, **orange** prepares a sweet end and **gold** is the afterglow. The first slide is always blue and the last always gold, with the slides in between blended smoothly. The slide numbers, the thumbnails and the cursor follow the same colors. They're only in the editor: slides, themes and exports don't change.
 
 ### Markdown
 

@@ -409,7 +409,7 @@ svg.ph { fill: currentColor; stroke: none; }
   display: grid;
   place-items: center;
   border-radius: 10px;
-  background: color-mix(in oklch, var(--badge) 38%, var(--ui-panel));
+  background: color-mix(in oklab, var(--slide) var(--badge-tint), var(--ui-panel));
   color: var(--ui-fg);
   font-size: 10.5px;
   font-weight: 650;
@@ -417,8 +417,8 @@ svg.ph { fill: currentColor; stroke: none; }
 }
 .thumb .frame { border-radius: 4px; box-shadow: 0 0 0 1px var(--ui-line); transition: box-shadow 120ms; }
 .thumb:hover .frame { box-shadow: 0 0 0 1px var(--ui-faint); }
-.thumb.is-current .frame { box-shadow: 0 0 0 2px var(--ui-accent); }
-.thumb.is-current .thumb-num { background: var(--badge); color: #100F0F; }
+.thumb.is-current .frame { box-shadow: 0 0 0 2px var(--slide); }
+.thumb.is-current .thumb-num { background: var(--slide); color: var(--badge-ink); }
 
 /* ---------- Editor ---------- */
 
@@ -437,11 +437,11 @@ svg.ph { fill: currentColor; stroke: none; }
   max-width: 46rem;
   margin: 0 auto;
   padding: 56px 56px 45vh 84px;
-  caret-color: var(--ui-accent);
+  caret-color: var(--slide, var(--ui-accent));
 }
 .shell[data-view='write'] .editor .cm-content { padding-top: 12vh; }
 .editor .cm-line { position: relative; padding: 0; }
-.editor .cm-cursor { border-left: 2px solid var(--ui-accent); }
+.editor .cm-cursor { border-left: 2px solid var(--slide, var(--ui-accent)); }
 .editor .cm-activeLine { background: var(--ed-active); box-shadow: -14px 0 0 var(--ed-active), 14px 0 0 var(--ed-active); }
 .editor .cm-selectionBackground,
 .editor .cm-focused .cm-selectionBackground,
@@ -449,23 +449,38 @@ svg.ph { fill: currentColor; stroke: none; }
 .editor .cm-placeholder { color: var(--ed-mark); }
 
 /* Line roles */
-.cm-l-note { color: var(--ed-note); }
+/*
+ * Slide colors (badges.ts): every slide carries --sl (light) and --sd (dark);
+ * --slide is the one for the current scheme. On-slide lines are written in
+ * their slide's color; notes stay in plain ink; comments are grey italics.
+ */
+.editor .cm-editor,
+.cm-line,
+.thumb { --slide: var(--sl); --badge-ink: #FFFCF0; --badge-tint: 32%; }
+@media (prefers-color-scheme: dark) {
+  .editor .cm-editor,
+  .cm-line,
+  .thumb { --slide: var(--sd); --badge-ink: #100F0F; --badge-tint: 42%; }
+}
+
+.cm-l-note { color: var(--ed-text); }
 .cm-l-comment { color: var(--ed-mark); font-style: italic; }
 .cm-l-fm { color: var(--ed-mark); font-size: 13px; line-height: 1.7; }
-.cm-l-show { color: var(--ed-text); }
-.cm-l-show::before {
-  content: '';
-  position: absolute;
-  left: -22px;
-  top: 0.72em;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--ui-accent);
-  opacity: 0.85;
+.cm-l-show {
+  color: var(--slide, var(--ed-text));
+  --ed-link: var(--slide);
+  --ed-syntax: color-mix(in oklab, var(--slide) 55%, transparent);
 }
-.cm-l-heading::before { border-radius: 1px; }
-.cm-l-code::before { opacity: 0.35; }
+.cm-l-code { color: color-mix(in oklab, var(--slide) 80%, var(--ed-text)); }
+
+/* The leading tab of an on-slide line: a faint ⇥ hanging where the # would be */
+.cm-tab-mark {
+  display: inline-block;
+  width: 2ch;
+  color: color-mix(in oklab, var(--slide) 55%, transparent);
+  font-weight: 400;
+  user-select: none;
+}
 .cm-l-sep {
   color: var(--ed-mark);
   background: linear-gradient(var(--ui-line), var(--ui-line)) 0 50% / 100% 1px no-repeat;
@@ -484,14 +499,14 @@ svg.ph { fill: currentColor; stroke: none; }
   display: grid;
   place-items: center;
   border-radius: 13px;
-  background: color-mix(in oklch, var(--badge) 38%, var(--ui-bg));
+  background: color-mix(in oklab, var(--slide) var(--badge-tint), var(--ui-bg));
   color: var(--ui-fg);
   font: 650 12.5px/1 var(--font-ui);
   font-variant-numeric: tabular-nums;
   transition: background-color 150ms, color 150ms, transform 150ms;
   pointer-events: none;
 }
-.cm-l-badge.is-active::after { background: var(--badge); color: #100F0F; transform: scale(1.08); }
+.cm-l-badge.is-active::after { background: var(--slide); color: var(--badge-ink); transform: scale(1.08); }
 
 /* ---------- Preview ---------- */
 
