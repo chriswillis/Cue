@@ -30,7 +30,7 @@ flowchart TB
   Editor <-. "BroadcastChannel" .-> Presenter
 ```
 
-- **One page, two apps.** `index.html` loads `main.ts`. If the URL ends in `#presenter`, it boots the presenter window; otherwise it boots the editor.
+- **One page, two apps.** `index.html` loads `main.ts`. If the URL starts with `#presenter`, it boots the presenter window; otherwise it boots the editor. Each editor tab makes up a channel id when it loads and passes it as `#presenter&ch=…`, so two Cue tabs never drive each other's presenter windows.
 - **Text in, slides out.** The editor holds the markdown. The parser splits it into slides and works out which lines are on the slide. The renderer turns each slide into DOM using a theme.
 - **No stored state besides the text.** Theme, fonts, colors and aspect ratio live in the front matter at the top of the text. The Design panel edits that block, so undo, save and share include settings automatically.
 
@@ -117,8 +117,11 @@ flowchart TD
   Link -->|"recipient opens"| Shared["Shared mode:<br/>nothing saved until 'Save a copy'"]
 ```
 
-- **Deck library** (`storage.ts`). Every deck is a record `{ id, name, text, createdAt, savedAt, handle? }`. `handle` is the file on disk when there is one. New decks are only saved after the first real edit.
+- **Deck library** (`storage.ts`). Every deck is a record `{ id, name, text, createdAt, savedAt, handle? }`. `handle` is the file on disk when there is one. New decks are only saved after the first real edit. A deck without a file is named after its first `#` heading until you rename it by hand; a real `.md` file is never renamed that way.
+- **Download all decks** (menu). Zips every deck in the library as `.md` files (`zip.ts`, stored, no compression). It's how people keep a copy: browser storage can be cleared.
 - **Share links** (`share.ts`). The deck lives in the URL fragment (after `#`), which browsers never send to a server. Raw HTML in markdown is turned off, so a shared deck can't run code.
+- **After a link opens** (`main.ts`). The fragment is removed from the address bar, and the deck is kept in `sessionStorage` (this tab only, never the library) so a reload doesn't lose it. Edits to a shared deck highlight "Save a copy", and leaving the page asks first (`beforeunload`).
+- **Content-Security-Policy.** Added to the built `index.html` only, by a small plugin in `vite.config.ts` (the dev server needs inline scripts). `index.html` also sets `referrer: no-referrer`.
 
 ## Shipping it
 
@@ -147,6 +150,7 @@ flowchart LR
 | `src/badges.ts` | The editor's blue → gold slide colors. |
 | `src/inspector.ts` | The Design panel. |
 | `src/storage.ts` | IndexedDB deck library and real files. |
+| `src/zip.ts` | A tiny zip writer for "Download all decks". |
 | `src/share.ts`, `src/share-ui.ts` | Encrypted share links and the Share dialog. |
 | `src/present.ts` | Fullscreen Present mode. |
 | `src/presenter.ts` | The presenter window (notes, next slide, timer). |

@@ -937,6 +937,9 @@ svg.ph { fill: currentColor; stroke: none; }
 }
 .shared-pill button:hover { background: color-mix(in oklch, var(--ui-accent) 14%, transparent); }
 .shared-pill button svg { width: 14px; height: 14px; color: var(--ui-muted); }
+/* Edits to a shared deck live only in this tab: make "Save a copy" the obvious next step */
+.shared-pill button.is-nudge { background: var(--ui-accent); color: var(--ui-bg); }
+.shared-pill button.is-nudge:hover { background: color-mix(in oklch, var(--ui-accent) 86%, var(--ui-fg)); }
 
 .share-modal {
   position: fixed;

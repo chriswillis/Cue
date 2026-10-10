@@ -7,7 +7,19 @@ import { renderDeck, mount, renderNotes } from './render';
  * window over a BroadcastChannel.
  */
 
-export const CHANNEL = 'cue-presenter';
+/**
+ * Each editor tab talks to its own presenter window: the editor makes up an id
+ * when it loads and passes it in the presenter's URL (#presenter&ch=…), so two
+ * Cue tabs don't drive each other's presenter windows. This keeps tabs apart;
+ * it isn't a security boundary (any page on this origin can read the decks).
+ */
+export const channelName = (id: string) => `cue-presenter:${id}`;
+
+/** The presenter window's channel id, from its URL. */
+function channelFromURL(): string {
+  const id = new URLSearchParams(location.hash.slice(1)).get('ch') ?? '';
+  return /^[\w-]{1,64}$/.test(id) ? id : 'default';
+}
 
 /**
  * Messages between the editor window and the presenter window.
@@ -58,7 +70,7 @@ export function bootPresenter(): void {
     </div>`;
 
   const $ = <T extends HTMLElement>(s: string) => app.querySelector(s) as T;
-  const ch = new BroadcastChannel(CHANNEL);
+  const ch = new BroadcastChannel(channelName(channelFromURL()));
   let parsed: ParsedDoc | null = null;
   let slides: HTMLElement[] = [];
   let index = 0;

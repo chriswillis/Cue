@@ -1,12 +1,13 @@
 /**
- * main.ts — the app shell. Start reading here.
+ * main.ts — the app shell. Start learning here.
  *
  * WHAT HAPPENS WHEN THE PAGE LOADS
  *   1. The same index.html serves two windows. `#presenter` in the URL boots
  *      the presenter window (presenter.ts); anything else boots the editor.
  *   2. boot() draws the static UI (shellHTML at the bottom of this file), then
- *      decides what text to open: a shared link (#v1k… / #v1p…), else the last
- *      deck from the library (storage.ts), else the sample deck.
+ *      decides what text to open: a shared link (#v1k… / #v1p…, or one this
+ *      tab already opened), else the last deck from the library (storage.ts),
+ *      else the sample deck.
  *   3. createEditor() (editor.ts) puts that text in CodeMirror. From then on
  *      the editor text is the single source of truth: settings live in its
  *      front matter, slides are derived from it, nothing else is stored.
@@ -40,17 +41,24 @@ import { Inspector } from './inspector';
 import { injectThemeCSS, getTheme } from './themes';
 import { FileStore, kvGet, kvSet, download, listDecks, getDeck, putDeck, deleteDeck, newDeckId, persistStorage, type Deck, type Draft } from './storage';
 import { Stage } from './present';
-import { bootPresenter, CHANNEL, type Msg } from './presenter';
+import { bootPresenter, channelName, type Msg } from './presenter';
 import { icons } from './icons';
 import { slideVars } from './badges';
 import { parseShareFragment, decodeDeck, encodeDeck, ShareError, type SharedDeck } from './share';
 import { ShareDialog, askPassword, showLinkError } from './share-ui';
+import { zip } from './zip';
 import sample from './sample.md?raw';
 
 injectThemeCSS();
 
-// Two apps, one page: the presenter window opens this same URL with #presenter.
-if (location.hash === '#presenter') {
+/**
+ * A deck opened from a link is kept in sessionStorage: this tab only, never
+ * the library. Declared up here because boot() reads it before its first await.
+ */
+const SHARED_KEY = 'cue.shared';
+
+// Two apps, one page: the presenter window opens this same URL with #presenter&ch=….
+if (location.hash.startsWith('#presenter')) {
   bootPresenter();
 } else {
   boot();
@@ -100,16 +108,11 @@ function ago(t: number): string {
   return new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
-/** What New starts with: default settings, then an empty title slide. */
-const BLANK_DOC = `---
-theme: swiss
-appearance: light
-aspect: 16:9
----
-
-# Untitled
-
-`;
+/**
+ * What New starts with: nothing, so the editor's placeholder shows how to
+ * begin. Default settings need no front matter; the Design panel adds it.
+ */
+const BLANK_DOC = '';
 
 /** Builds the editor app. Runs once; everything below shares its local state. */
 async function boot() {
@@ -121,16 +124,16 @@ async function boot() {
   /* ---------------- shared links ---------------- */
   // A deck opened from a link lives only in this tab until it is saved, so
   // the recipient's own draft and files are never overwritten.
-  const sharedDeck = await openSharedLink();
-  let sharedMode = !!sharedDeck;
+  const shared = await openSharedLink();
+  let sharedMode = !!shared;
 
   /* ---------------- state ---------------- */
   const files = new FileStore();
   // The deck being edited. null until a new deck (or the sample) is first edited.
   let deck: Deck | null = sharedMode ? null : await loadStartDeck();
   // Reopen the last deck; start with the sample deck when there is none (or it's empty).
-  const initialText = sharedDeck?.markdown ?? (deck?.text?.trim() ? deck.text : sample);
-  if (sharedDeck) files.name = sharedDeck.name;
+  const initialText = shared?.text ?? (deck?.text?.trim() ? deck.text : sample);
+  if (shared) files.name = shared.name;
   else if (deck) files.use(deck.name, deck.handle);
   else files.name = SAMPLE_NAME;
 
@@ -140,7 +143,11 @@ async function boot() {
   let view: EditorView;
   const cache = new Map<string, HTMLElement>();
   const stage = new Stage();
-  const channel = new BroadcastChannel(CHANNEL);
+  // This tab's presenter channel. A new id on every load (not kept in
+  // sessionStorage, which a duplicated tab would copy); a reload closes the
+  // old presenter window anyway ('bye').
+  const channelId = newDeckId();
+  const channel = new BroadcastChannel(channelName(channelId));
   let inspector: Inspector | null = null;
 
   /* ---------------- rendering ---------------- */
@@ -277,6 +284,7 @@ async function boot() {
     onChange: (text) => {
       scheduleRender();
       if (!loading) {
+        if (autoName) applyAutoName();
         setStatus('Edited');
         dirty = true;
         clearTimeout(saveTimer);
@@ -292,8 +300,9 @@ async function boot() {
   });
   renderAll();
   setDocName();
-  setStatus(sharedMode ? 'Opened from a link' : deck ? 'Restored' : 'Not saved yet');
+  setStatus(sharedMode ? sharedStatus() : deck ? 'Restored' : 'Not saved yet');
   $('.shared-pill').hidden = !sharedMode;
+  markSharedEdits();
 
   /* ---------------- deck library (storage.ts) ---------------- */
   // `deck` is the library record being edited, or null for a deck that hasn't
@@ -309,8 +318,52 @@ async function boot() {
     sharedMode = false;
     deck = null;
     clearHash();
+    sessionRemove(SHARED_KEY);
     $('.shared-pill').hidden = true;
   }
+
+  /** True when the shared deck has edits that exist only in this tab. */
+  function sharedEdited(): boolean {
+    return sharedMode && !!shared && view.state.doc.toString() !== shared.markdown;
+  }
+  function sharedStatus(): string {
+    return sharedEdited() ? 'Edited · Save a copy to keep it' : 'Opened from a link';
+  }
+  /** Highlight "Save a copy" once there's something to lose. */
+  function markSharedEdits() {
+    $('.shared-pill [data-act="save-as"]').classList.toggle('is-nudge', sharedEdited());
+  }
+  /** Keep the shared deck (and edits to it) for this tab only, so a reload doesn't lose it. */
+  function rememberShared() {
+    if (!sharedMode || !shared) return;
+    sessionSet(SHARED_KEY, { name: files.name, markdown: shared.markdown, text: view.state.doc.toString() } satisfies SharedSession);
+  }
+
+  /** Close the shared deck and go back to your own. Asks first if it has edits. */
+  async function closeShared(force = false) {
+    if (!force && sharedEdited()) {
+      toast('Your edits to this shared deck aren’t saved.', { label: 'Close anyway', run: () => closeShared(true) });
+      return;
+    }
+    leaveSharedMode();
+    deck = await loadStartDeck();
+    if (deck) files.use(deck.name, deck.handle);
+    else {
+      files.forget();
+      files.name = SAMPLE_NAME;
+    }
+    loadText(deck?.text?.trim() ? deck.text : sample);
+    syncAutoName();
+    setStatus(!deck ? 'Not saved yet' : deck.handle ? `Saved · ${stripExt(deck.name)}` : 'Saved in browser');
+  }
+
+  // Reloading or closing the tab would lose edits to a shared deck. Browsers
+  // show their own wording here; the highlighted "Save a copy" says the rest.
+  window.addEventListener('beforeunload', (e) => {
+    if (!sharedEdited()) return;
+    e.preventDefault();
+    e.returnValue = '';
+  });
 
   window.addEventListener('hashchange', () => {
     try {
@@ -350,6 +403,8 @@ async function boot() {
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') flushSave();
   });
+  // A reload can come before the autosave timer: keep the shared deck's latest text.
+  window.addEventListener('pagehide', () => rememberShared());
 
   /** Replace the editor's text without counting it as an edit. */
   function loadText(text: string) {
@@ -378,6 +433,7 @@ async function boot() {
     deck = d;
     files.use(d.name, d.handle);
     loadText(d.text);
+    syncAutoName();
     await kvSet('current-deck', d.id);
     setStatus(d.handle ? `Saved · ${stripExt(d.name)}` : 'Saved in browser');
   }
@@ -396,6 +452,7 @@ async function boot() {
       else {
         files.forget();
         loadText(BLANK_DOC);
+        syncAutoName();
         setStatus('Not saved yet');
       }
     }
@@ -477,7 +534,9 @@ async function boot() {
 
   async function autosave(text: string) {
     if (sharedMode) {
-      setStatus('Shared deck · edits aren’t saved');
+      rememberShared();
+      setStatus(sharedStatus());
+      markSharedEdits();
       return;
     }
     const stored = await persistCurrent(text);
@@ -526,7 +585,9 @@ async function boot() {
       return;
     }
     setDocName();
-    if (!sharedMode) await persistCurrent();
+    autoName = false; // named by hand: stop following the first heading
+    if (sharedMode) rememberShared();
+    else await persistCurrent();
     toast(files.handle ? `Renamed file to ${files.name}` : `Renamed to ${stripExt(files.name)}`);
   }
   nameInput.addEventListener('input', sizeNameInput);
@@ -543,6 +604,37 @@ async function boot() {
     }
   });
   nameInput.addEventListener('blur', () => finishRename(true));
+
+  /* ---------------- names from the first heading ---------------- */
+  // A deck that lives only in this browser is named after its first # heading
+  // until it's renamed by hand. A real .md file on disk is never renamed this
+  // way, and neither is a shared deck.
+  let autoName = false;
+
+  /** The first # heading, cleaned up to work as a file name. */
+  function headingName(): string {
+    return getParsed(view)
+      .title.replace(/[\\/:*?"<>|\u0000-\u001f]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 80)
+      .replace(/[.\s]+$/, '');
+  }
+  /** After opening a deck: should its name follow the heading? */
+  function syncAutoName() {
+    const stem = stripExt(files.name);
+    autoName = !sharedMode && !files.handle && (stem === 'Untitled' || stem === stripExt(SAMPLE_NAME) || stem === headingName());
+    applyAutoName();
+  }
+  /** Rename to the heading. Not an edit: the new name is stored with the next save. */
+  function applyAutoName() {
+    if (!autoName || sharedMode || files.handle || !nameInput.hidden) return;
+    const n = headingName();
+    if (!n || `${n}.md` === files.name) return;
+    files.name = `${n}.md`;
+    setDocName();
+  }
+  syncAutoName();
 
   function setDocName() {
     $('.doc-name-text').textContent = files.name.replace(/\.(md|markdown|txt)$/i, '');
@@ -637,7 +729,7 @@ async function boot() {
   }
 
   function presenterView() {
-    const w = window.open(`${location.pathname}${location.search}#presenter`, 'cue-presenter', 'popup,width=1280,height=800');
+    const w = window.open(`${location.pathname}${location.search}#presenter&ch=${channelId}`, `cue-presenter-${channelId}`, 'popup,width=1280,height=800');
     if (!w) toast('Allow pop-ups for this site to open presenter view.');
     present();
   }
@@ -650,7 +742,8 @@ async function boot() {
       goto(m.index);
     }
   };
-  window.addEventListener('beforeunload', () => channel.postMessage({ type: 'bye' } satisfies Msg));
+  // pagehide, not beforeunload: the latter can still be cancelled (see shared decks).
+  window.addEventListener('pagehide', () => channel.postMessage({ type: 'bye' } satisfies Msg));
 
   /* ---------------- file actions ---------------- */
   async function doOpen() {
@@ -674,6 +767,7 @@ async function boot() {
     }
     deck = existing;
     loadText(r.text);
+    syncAutoName();
     await persistCurrent(r.text);
     setStatus(files.handle ? 'Saved' : 'Opened · edits are saved in this browser');
   }
@@ -695,8 +789,34 @@ async function boot() {
     files.forget();
     files.name = name;
     loadText(text);
+    syncAutoName();
     setStatus('Not saved yet');
   }
+  /**
+   * Every deck in the library as .md files in one zip. Browser storage can be
+   * cleared (Safari does it after 7 days without a visit), so this is how
+   * people keep a copy or move their decks to another browser.
+   */
+  async function downloadAll() {
+    await flushSave();
+    const decks = await listDecks();
+    if (!decks.length) {
+      toast('There are no saved decks yet.');
+      return;
+    }
+    const used = new Set<string>();
+    const entries = decks.map((d) => {
+      const base = deckLabel(d).replace(/[\\/:*?"<>|\u0000-\u001f]/g, '').replace(/^[.\s]+/, '').trim().slice(0, 100) || 'Untitled';
+      let name = `${base}.md`;
+      for (let n = 2; used.has(name.toLowerCase()); n++) name = `${base} ${n}.md`;
+      used.add(name.toLowerCase());
+      return { name, text: d.text, date: new Date(d.savedAt) };
+    });
+    const day = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD
+    download(`Cue decks ${day}.zip`, zip(entries));
+    toast(`Downloaded ${decks.length} ${decks.length === 1 ? 'deck' : 'decks'}`);
+  }
+
   function doPrint() {
     const root = document.getElementById('print-root') ?? document.body.appendChild(Object.assign(document.createElement('div'), { id: 'print-root' }));
     const { w, h } = ASPECTS[parsed.settings.aspect];
@@ -745,8 +865,7 @@ async function boot() {
         shareDialog.toggle();
         break;
       case 'leave-shared':
-        clearHash();
-        location.reload();
+        closeShared();
         break;
       case 'theme':
         toggleInspector();
@@ -776,6 +895,10 @@ async function boot() {
       case 'download':
         closeMenu();
         download(files.name, view.state.doc.toString());
+        break;
+      case 'download-all':
+        closeMenu();
+        downloadAll();
         break;
       case 'print':
         closeMenu();
@@ -879,12 +1002,36 @@ function clearHash() {
   history.replaceState(null, '', location.pathname + location.search);
 }
 
-/** If the URL carries a shared deck, decrypt it (asking for a password if needed). */
-async function openSharedLink(): Promise<SharedDeck | null> {
+/** A deck opened from a link, as kept in sessionStorage under SHARED_KEY. */
+interface SharedSession {
+  name: string;
+  /** what the link carried; `text` includes any edits */
+  markdown: string;
+  text: string;
+}
+
+/**
+ * If the URL carries a shared deck, decrypt it (asking for a password if
+ * needed). Once it opens, the fragment is taken out of the address bar so the
+ * key isn't left on screen, in screenshots or in a copied URL. That can't
+ * reach copies the browser history, chat apps or synced devices already have.
+ * With no link in the URL, reopen the shared deck this tab had before a reload.
+ */
+async function openSharedLink(): Promise<SharedSession | null> {
+  const opened = (d: SharedDeck): SharedSession => {
+    const s = { name: d.name, markdown: d.markdown, text: d.markdown };
+    sessionSet(SHARED_KEY, s);
+    clearHash();
+    return s;
+  };
   try {
     const link = parseShareFragment(location.hash);
-    if (!link) return null;
-    if (link.kind === 'key') return await decodeDeck(link);
+    if (!link) {
+      const s = sessionGet<SharedSession>(SHARED_KEY);
+      return s && typeof s.markdown === 'string' && typeof s.text === 'string' && typeof s.name === 'string' ? s : null;
+    }
+    sessionRemove(SHARED_KEY); // a new link replaces whatever this tab had open
+    if (link.kind === 'key') return opened(await decodeDeck(link));
     let error: string | undefined;
     for (;;) {
       const pw = await askPassword(error);
@@ -893,7 +1040,7 @@ async function openSharedLink(): Promise<SharedDeck | null> {
         return null;
       }
       try {
-        return await decodeDeck(link, pw);
+        return opened(await decodeDeck(link, pw));
       } catch (e) {
         if (e instanceof ShareError && e.reason === 'decrypt') {
           error = 'That password didn’t work. Check it and try again.';
@@ -906,6 +1053,29 @@ async function openSharedLink(): Promise<SharedDeck | null> {
     await showLinkError(e instanceof ShareError ? e.message : 'Something went wrong while opening the link.');
     clearHash();
     return null;
+  }
+}
+
+function sessionGet<T>(key: string): T | null {
+  try {
+    const v = sessionStorage.getItem(key);
+    return v ? (JSON.parse(v) as T) : null;
+  } catch {
+    return null;
+  }
+}
+function sessionSet(key: string, value: unknown): void {
+  try {
+    sessionStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    /* storage full or blocked: the deck still works until the tab closes */
+  }
+}
+function sessionRemove(key: string): void {
+  try {
+    sessionStorage.removeItem(key);
+  } catch {
+    /* ignore */
   }
 }
 
@@ -962,7 +1132,7 @@ function shellHTML(): string {
         <button class="icon-btn" data-act="menu" aria-label="File menu" aria-haspopup="menu" aria-expanded="false">${icons.menu}</button>
         <button class="alpha-pill" data-act="alpha" aria-haspopup="dialog" aria-expanded="false" title="Cue is in alpha">Alpha</button>
         <div class="alpha-pop" role="dialog" aria-label="About this alpha" hidden>
-          <p><strong>Cue is early.</strong> Your decks are saved in this browser (menu → Recent) and to any .md file you save. Keep a copy of anything important. Things may change.</p><p>On iPhone and iPad, add Cue to your Home Screen so Safari keeps your decks.</p>
+          <p><strong>Cue is early.</strong> Your decks are saved in this browser (menu → Recent) and to any .md file you save. To keep a copy of everything, use menu → Download all decks. Things may change.</p><p>On iPhone and iPad, add Cue to your Home Screen so Safari keeps your decks.</p>
         </div>
         <div class="doc-name"><button class="doc-name-text" data-act="rename" title="Rename presentation">Untitled</button><input class="doc-name-input" type="text" aria-label="Presentation name" spellcheck="false" maxlength="120" hidden /><span class="doc-status"></span></div>
         <div class="shared-pill" hidden>
@@ -981,6 +1151,7 @@ function shellHTML(): string {
           <button role="menuitem" data-act="save">${icons.save}<span>Save</span><kbd>${M}S</kbd></button>
           <button role="menuitem" data-act="save-as"><span class="sp"></span><span>Save as…</span><kbd>${M}⇧S</kbd></button>
           <button role="menuitem" data-act="download"><span class="sp"></span><span>Download .md</span></button>
+          <button role="menuitem" data-act="download-all"><span class="sp"></span><span>Download all decks</span></button>
           <hr />
           <button role="menuitem" data-act="print">${icons.print}<span>Print or save as PDF</span><kbd>${M}P</kbd></button>
           <hr />

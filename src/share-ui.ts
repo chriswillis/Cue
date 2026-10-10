@@ -223,12 +223,13 @@ export function askPassword(error?: string): Promise<string | null> {
       <p>Enter the password you were given with the link.</p>
       <form class="sm-form">
         <input class="ins-input sm-pw" type="password" autocomplete="current-password" placeholder="Password" aria-label="Password" />
-        <p class="sm-error" role="alert">${error ?? ''}</p>
+        <p class="sm-error" role="alert"></p>
         <div class="sm-actions">
           <button type="button" class="ins-btn" data-sm="cancel">Open my own deck</button>
           <button type="submit" class="btn primary">Open</button>
         </div>
       </form>`);
+    m.querySelector('.sm-error')!.textContent = error ?? ''; // text, never markup
     const input = m.querySelector<HTMLInputElement>('.sm-pw')!;
     input.focus();
     m.querySelector('form')!.addEventListener('submit', (e) => {
@@ -251,8 +252,9 @@ export function showLinkError(message: string): Promise<void> {
   return new Promise((resolve) => {
     const m = modal(`
       <h3>This link couldn’t be opened</h3>
-      <p>${message}</p>
+      <p class="sm-message"></p>
       <div class="sm-actions"><button type="button" class="btn primary" data-sm="ok">Open my own deck</button></div>`);
+    m.querySelector('.sm-message')!.textContent = message; // text, never markup
     m.querySelector('[data-sm="ok"]')!.addEventListener('click', () => {
       m.remove();
       resolve();

@@ -2,13 +2,13 @@
 
 Read this first when you pick up the project in a new session. For how the code works, read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-**Status (2026-10-09):** alpha 0.1.0, live and in daily use. Everything below is built, committed and deployed unless it's listed under "Next up" or "Ideas and open threads".
+**Status (2026-10-09):** alpha 0.1.0, live and in daily use. Steps 1–5 of "Next up" are built and tested locally, waiting for Chris to review and commit. Everything below is built, committed and deployed unless it's listed under "Next up" or "Ideas and open threads".
 
 ---
 
 ## 1. What Cue is
 
-A browser clone of [iA Presenter](https://ia.net/presenter). You write a markdown script, and Cue turns it into designed slides, with good typography, color and grid, and no dragging of boxes.
+A browser app where you write a markdown script, and Cue turns it into designed slides, with good typography, color and grid, and no dragging of boxes.
 
 - **Site:** https://cewillis.com/Cue/ (`chriswillis.github.io/Cue/` redirects there)
 - **Repo:** https://github.com/chriswillis/Cue, public, branch `main`
@@ -45,12 +45,12 @@ npm run build      # tsc --noEmit, then vite build → dist/
 - **Flexoki for every color.** That covers themes, editor slide colors and UI accents (`src/flexoki.ts`).
   - When tinting toward a neutral, mix in **oklab**, not oklch. oklch mixing made blue tints drift green.
 - **Slides are 1920 px wide** (or 1600 / 1080 depending on aspect) and scaled with transforms. `fit()` steps the type down when content overflows.
-- **Writing rules** (iA Presenter's):
+- **Writing rules**:
   - Headings, tab-indented lines, images, tables and fences go on the slide; everything else is speaker notes.
   - `---` starts a new slide.
   - `//` lines are comments. They also carry directives: `// layout: x`, `// dark`, `// light`, `// invert`.
 - **Copy style:** sentence case, plain and short. No "draft" jargon in the UI.
-- **Security:** markdown `html: false`, because shared links carry other people's markdown. `<img>` lines are converted to markdown images instead.
+- **Security:** markdown `html: false`, because shared links carry other people's markdown. `<img>` lines are converted to markdown images instead. The built site has a Content-Security-Policy (added by `vite.config.ts`, build only) and `referrer: no-referrer`. If you add a feature that loads from another origin (fonts, fetch, workers), update the CSP or it will silently break in production but not in `npm run dev`.
 
 ## 5. Features, briefly
 
@@ -90,6 +90,8 @@ npm run build      # tsc --noEmit, then vite build → dist/
 **Saving**
 
 - A deck library in IndexedDB, with **Recent** in the menu.
+- Browser-only decks are named after their first `#` heading until renamed by hand. Files on disk are never renamed silently. **New** starts empty, so the editor placeholder shows.
+- **Download all decks**: a zip of every library deck as `.md` (`src/zip.ts`).
 - Two-step delete: × turns into a red trash can, then the row fades out, with Undo.
 - Real `.md` files via the File System Access API in Chromium. Cue asks for persistent storage.
 
@@ -97,11 +99,12 @@ npm run build      # tsc --noEmit, then vite build → dist/
 
 - Deflate, then AES-GCM-256, then base64url in the URL fragment. The key travels in the link, or you set a password (PBKDF2, 600k iterations).
 - Opening a link puts the app in shared mode; nothing is saved until "Save a copy".
+- After it opens, the fragment is removed from the address bar and the deck is kept in `sessionStorage` (`cue.shared`, this tab only) so reloads keep it, edits included. Edits highlight "Save a copy"; closing the shared deck (×) or leaving the page with edits asks first.
 
 **Presenting**
 
 - Fullscreen stage (⌘↵).
-- Presenter window (⌘⇧↵) with notes, next slide and a timer, synced over a BroadcastChannel.
+- Presenter window (⌘⇧↵) with notes, next slide and a timer, synced over a BroadcastChannel. Each editor tab uses its own channel (`#presenter&ch=<id>`), so two tabs don't cross-talk.
 - Print to PDF.
 
 **Chrome**
@@ -117,25 +120,27 @@ npm run build      # tsc --noEmit, then vite build → dist/
 - **Bodoni Moda** uses `wght.css`, not `opsz.css`; the latter gave odd spacing.
 - **Rename** uses `FileSystemFileHandle.move()`, which only exists in Chromium; elsewhere it falls back to a toast.
 - **Share links made on localhost only open on the same machine.** Make share links from the live site.
+- **The TDZ trap again (2026-10-09):** `SHARED_KEY` was first declared below `boot()` and broke reloading a shared deck. It now sits at the top of `main.ts`. Anything `boot()` reads before its first `await` must be declared above the `boot()` call.
+- **The presenter channel id is per page load, not in `sessionStorage`** (the plan said sessionStorage). Duplicating a tab copies its sessionStorage, which would bring the cross-talk back. A reload sends `bye` (now on `pagehide`), which closes the old presenter window anyway.
 
 ## 7. Next up: agreed plan
 
-Agreed with Chris on 2026-10-09, after reviewing a list of UX and security suggestions. Build in this order. **Steps 1 and 2 go together as the next pass.**
+Agreed with Chris on 2026-10-09, after reviewing a list of UX and security suggestions. Build in this order. **Steps 1–5 are built (2026-10-09, pending commit).** Import of a zip or several `.md` files (end of step 2) is not built yet. **Step 6 is next.**
 
-1. **Shared links: hide the key, keep the deck.**
+1. ✅ **Shared links: hide the key, keep the deck.**
    - After a share link decrypts, remove the `#v1k…` / `#v1p…` fragment from the address bar with `history.replaceState`. `clearHash()` already exists in `main.ts`; today it only runs on error or when leaving shared mode.
    - So a reload doesn't lose the shared deck, keep it in `sessionStorage` for that tab only, never in the library, and restore it on reload.
    - When the tab has unsaved edits to a shared deck, warn before leaving (`beforeunload`). The prompt should point to **Save a copy**.
    - Be honest about limits: this can't remove the key from browser history, chat apps or synced devices that already saw the link.
-2. **Export all decks.** A menu item, "Download all decks", saves a zip of `.md` files from the IndexedDB library. Data loss is Cue's biggest real risk: Safari's 7-day rule, cleared browser data, switching computers. Import (a zip or several `.md` files) can follow. It also unlocks step 7.
-3. **Per-tab presenter channel.** Two Cue tabs currently cross-talk with each other's presenter windows (`CHANNEL = 'cue-presenter'` in `presenter.ts`).
+2. ✅ **Export all decks.** (import still to do) A menu item, "Download all decks", saves a zip of `.md` files from the IndexedDB library. Data loss is Cue's biggest real risk: Safari's 7-day rule, cleared browser data, switching computers. Import (a zip or several `.md` files) can follow. It also unlocks step 7.
+3. ✅ **Per-tab presenter channel.** (id per page load; see Gotchas) Two Cue tabs currently cross-talk with each other's presenter windows (`CHANNEL = 'cue-presenter'` in `presenter.ts`).
    - Create a random channel id per editor tab (in `sessionStorage`) and pass it to the presenter window in its URL (`#presenter&ch=…`). Ignore messages from other channels.
    - This is a bug fix, not a security boundary: anything on `cewillis.com` can already read IndexedDB. If cewillis.com ever hosts other people's pages, move Cue to its own subdomain.
-4. **Name decks from the first heading.**
+4. ✅ **Name decks from the first heading.**
    - New decks shouldn't start as `# Untitled`. Use the editor placeholder: an empty `# ` isn't a heading to the parser.
    - Set the deck name from the first `#` heading once it has text, without counting it as an edit (use the `loading` flag).
    - Only rename decks that live in the browser. **Never silently rename a real `.md` file on disk.**
-5. **Small hardening.**
+5. ✅ **Small hardening.**
    - Add `<meta name="referrer" content="no-referrer">` to `index.html`. This covers slide links and images, so per-link `noreferrer` isn't needed.
    - In `share-ui.ts` (`askPassword` / `showLinkError`), put messages in with `textContent`, not `innerHTML`.
    - Add a Content-Security-Policy **to the production build only**, via a Vite `transformIndexHtml` hook, because Vite's dev server injects inline scripts. Suggested policy:
@@ -169,4 +174,4 @@ Agreed with Chris on 2026-10-09, after reviewing a list of UX and security sugge
 
 Paste something like this:
 
-> We're continuing work on Cue, my markdown presentation app. The project is in my connected folder `Cue`. Read `HANDOFF.md` and `docs/ARCHITECTURE.md` first, check `git status`, then let's build steps 1 and 2 of "Next up" in HANDOFF.md (or: help me with …).
+> We're continuing work on Cue, my markdown presentation app. The project is in my connected folder `Cue`. Read `HANDOFF.md` and `docs/ARCHITECTURE.md` first, check `git status`, then let's build step 6 of "Next up" in HANDOFF.md (or: help me with …).

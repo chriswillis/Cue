@@ -267,8 +267,8 @@ export class FileStore {
   }
 }
 
-export function download(name: string, text: string, type = 'text/markdown'): void {
-  const blob = new Blob([text], { type: `${type};charset=utf-8` });
+export function download(name: string, content: string | Blob, type = 'text/markdown'): void {
+  const blob = typeof content === 'string' ? new Blob([content], { type: `${type};charset=utf-8` }) : content;
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
