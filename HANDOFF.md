@@ -2,7 +2,7 @@
 
 Read this first when you pick up the project in a new session. For how the code works, read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-**Status (2026-10-09):** alpha 0.1.0, live and in daily use. Everything below is built, committed and deployed unless it's listed under "Ideas and open threads".
+**Status (2026-10-09):** alpha 0.1.0, live and in daily use. Everything below is built, committed and deployed unless it's listed under "Next up" or "Ideas and open threads".
 
 ---
 
@@ -118,18 +118,55 @@ npm run build      # tsc --noEmit, then vite build → dist/
 - **Rename** uses `FileSystemFileHandle.move()`, which only exists in Chromium; elsewhere it falls back to a toast.
 - **Share links made on localhost only open on the same machine.** Make share links from the live site.
 
-## 7. Ideas and open threads
+## 7. Next up: agreed plan
 
-- **Name new decks from the first heading.** New decks start as `# Untitled`, so they all read "Untitled" in Recent until renamed. Offered to Chris but not built.
+Agreed with Chris on 2026-10-09, after reviewing a list of UX and security suggestions. Build in this order. **Steps 1 and 2 go together as the next pass.**
+
+1. **Shared links: hide the key, keep the deck.**
+   - After a share link decrypts, remove the `#v1k…` / `#v1p…` fragment from the address bar with `history.replaceState`. `clearHash()` already exists in `main.ts`; today it only runs on error or when leaving shared mode.
+   - So a reload doesn't lose the shared deck, keep it in `sessionStorage` for that tab only, never in the library, and restore it on reload.
+   - When the tab has unsaved edits to a shared deck, warn before leaving (`beforeunload`). The prompt should point to **Save a copy**.
+   - Be honest about limits: this can't remove the key from browser history, chat apps or synced devices that already saw the link.
+2. **Export all decks.** A menu item, "Download all decks", saves a zip of `.md` files from the IndexedDB library. Data loss is Cue's biggest real risk: Safari's 7-day rule, cleared browser data, switching computers. Import (a zip or several `.md` files) can follow. It also unlocks step 7.
+3. **Per-tab presenter channel.** Two Cue tabs currently cross-talk with each other's presenter windows (`CHANNEL = 'cue-presenter'` in `presenter.ts`).
+   - Create a random channel id per editor tab (in `sessionStorage`) and pass it to the presenter window in its URL (`#presenter&ch=…`). Ignore messages from other channels.
+   - This is a bug fix, not a security boundary: anything on `cewillis.com` can already read IndexedDB. If cewillis.com ever hosts other people's pages, move Cue to its own subdomain.
+4. **Name decks from the first heading.**
+   - New decks shouldn't start as `# Untitled`. Use the editor placeholder: an empty `# ` isn't a heading to the parser.
+   - Set the deck name from the first `#` heading once it has text, without counting it as an edit (use the `loading` flag).
+   - Only rename decks that live in the browser. **Never silently rename a real `.md` file on disk.**
+5. **Small hardening.**
+   - Add `<meta name="referrer" content="no-referrer">` to `index.html`. This covers slide links and images, so per-link `noreferrer` isn't needed.
+   - In `share-ui.ts` (`askPassword` / `showLinkError`), put messages in with `textContent`, not `innerHTML`.
+   - Add a Content-Security-Policy **to the production build only**, via a Vite `transformIndexHtml` hook, because Vite's dev server injects inline scripts. Suggested policy:
+     - `default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'none'; img-src 'self' https: data: blob:; font-src 'self' data:; connect-src 'self'`
+     - `style-src` needs `'unsafe-inline'`: slide colors and the editor's line colors are inline styles.
+     - `frame-ancestors` doesn't work in a meta tag.
+6. **Smoke test on every deploy.** In `.github/workflows/deploy.yml`, before publishing: build, serve `dist/`, open it in headless Chromium, and fail if there's a page error or no slides render (e.g. check `.slide` nodes in the strip). This would have caught the blank-page crash from the version number (`REPO` used before initialization).
+7. **Home Screen app (manifest).** Add `manifest.webmanifest`, icons, `apple-touch-icon` and `display: standalone`.
+   - **iPhone catch:** a Home Screen web app gets its **own storage**, separate from Safari, so decks made in Safari won't appear in it. Export/import (step 2) is how people move them, and the Alpha note should say so.
+   - Skip an offline service worker at first. A wrong caching rule on a site that redeploys often leaves people stuck on an old version.
+8. **Later:**
+   - In shared mode, show a placeholder for remote images ("Load images from example.com"), because remote images can track who opens a deck.
+   - Trap focus in the Share and password dialogs, and return focus afterwards.
+   - Load KaTeX only when a deck contains math. Present, the presenter window and print must still get it.
+   - Expose `__cue` only in development (`import.meta.env.DEV`). This is housekeeping, not security.
+   - Warn when two tabs edit the same deck: on save, check whether `savedAt` changed underneath, because the last save wins today.
+
+**Decided, don't revisit:**
+
+- Keep both the two-step delete and the Undo toast, at least for deleting the open deck.
+- Keep the share-link design as it is: AES-GCM-256, PBKDF2 600k, AAD-bound `v1k`/`v1p`, fragment-only, 20 MB decompress cap, `html: false`.
+
+## 8. Ideas and open threads
+
 - **Posters / generated backgrounds:** paused. See `spike/HANDOFF.md`. Chris wants to explore a node-based generator in the style of [Book of Shapes](https://bookofshapes.com/) next.
 - **Slides from iA's examples that Cue doesn't do yet:** a live timer slide; native charts.
-- **Undo toast on delete:** possibly redundant now that delete asks to confirm. Kept for now; ask Chris.
 - **More minimal / "textural" themes:** Chris asked for "some more" and gave one (Nothing). Expect more theme briefs in the same format: name, description, typography and screenshots.
-- **Bundle size:** the main chunk is about 700 KB (fonts, KaTeX, CodeMirror). Math could be loaded lazily.
-- **Home Screen / PWA:** a manifest and icons would make "Add to Home Screen" nicer on iPhone.
+- **Bundle size:** the main chunk is about 700 KB (fonts, KaTeX, CodeMirror). See step 8 of the plan.
 
-## 8. Starting a new session
+## 9. Starting a new session
 
 Paste something like this:
 
-> We're continuing work on Cue, my markdown presentation app. The project is in my connected folder `Cue`. Read `HANDOFF.md` and `docs/ARCHITECTURE.md` first, check `git status`, then help me with: …
+> We're continuing work on Cue, my markdown presentation app. The project is in my connected folder `Cue`. Read `HANDOFF.md` and `docs/ARCHITECTURE.md` first, check `git status`, then let's build steps 1 and 2 of "Next up" in HANDOFF.md (or: help me with …).
