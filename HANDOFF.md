@@ -125,7 +125,7 @@ npm run build      # tsc --noEmit, then vite build → dist/
 
 ## 7. Next up: agreed plan
 
-Agreed with Chris on 2026-10-09, after reviewing a list of UX and security suggestions. Build in this order. **Steps 1–5 are built (2026-10-09, pending commit).** Import of a zip or several `.md` files (end of step 2) is not built yet. **Step 6 is next.**
+Agreed with Chris on 2026-10-09, after reviewing a list of UX and security suggestions. Build in this order. **Steps 1–5 are built (2026-10-09, pending commit).** Import of a zip or several `.md` files (end of step 2) is not built yet. **Step 6 is next.** Step 2b (moving to `cue.cewillis.com`) needs import first and can go before or after 6.
 
 1. ✅ **Shared links: hide the key, keep the deck.**
    - After a share link decrypts, remove the `#v1k…` / `#v1p…` fragment from the address bar with `history.replaceState`. `clearHash()` already exists in `main.ts`; today it only runs on error or when leaving shared mode.
@@ -133,9 +133,16 @@ Agreed with Chris on 2026-10-09, after reviewing a list of UX and security sugge
    - When the tab has unsaved edits to a shared deck, warn before leaving (`beforeunload`). The prompt should point to **Save a copy**.
    - Be honest about limits: this can't remove the key from browser history, chat apps or synced devices that already saw the link.
 2. ✅ **Export all decks.** (import still to do) A menu item, "Download all decks", saves a zip of `.md` files from the IndexedDB library. Data loss is Cue's biggest real risk: Safari's 7-day rule, cleared browser data, switching computers. Import (a zip or several `.md` files) can follow. It also unlocks step 7.
+2b. **Move to cue.cewillis.com.** Give Cue its own origin, the real security boundary. Today Cue shares `cewillis.com` with everything else there, including analytics or embeds on the main site, and any of those scripts could read Cue's IndexedDB. A subdomain gets its own storage and channels.
+   - **Do import first.** Storage doesn't move with the address, so people need to download their decks at the old address and load them at the new one. For Chris's own decks, copying and pasting the text works too. Best done while Cue is still in alpha.
+   - **DNS** (Chris, at his domain host): a CNAME record `cue` → `chriswillis.github.io`.
+   - **GitHub:** in the Cue repo, Settings → Pages → Custom domain: `cue.cewillis.com`. When the certificate is issued, tick **Enforce HTTPS**. No CNAME file is needed when deploying with Actions.
+   - **Code:** update the absolute URLs in `index.html` (`og:url`, `og:image`, `twitter:image`), plus the README, this file and `docs/ARCHITECTURE.md`. The build itself is address-independent (`base: './'`).
+   - **Old share links:** GitHub should redirect `cewillis.com/Cue/…` to the new address, and browsers keep the `#…` fragment through a redirect. Test an old `#v1k…` link after the switch.
+   - **Warn before, not after.** Once the redirect is live, the old address can't be opened any more, so decks stored there become unreachable. Before switching, ship a banner at the old address ("Cue is moving to cue.cewillis.com. Download all decks first."), give it some time, then switch.
 3. ✅ **Per-tab presenter channel.** (id per page load; see Gotchas) Two Cue tabs currently cross-talk with each other's presenter windows (`CHANNEL = 'cue-presenter'` in `presenter.ts`).
    - Create a random channel id per editor tab (in `sessionStorage`) and pass it to the presenter window in its URL (`#presenter&ch=…`). Ignore messages from other channels.
-   - This is a bug fix, not a security boundary: anything on `cewillis.com` can already read IndexedDB. If cewillis.com ever hosts other people's pages, move Cue to its own subdomain.
+   - This is a bug fix, not a security boundary: anything on the same origin can already read IndexedDB. The real boundary is step 2b, Cue's own subdomain.
 4. ✅ **Name decks from the first heading.**
    - New decks shouldn't start as `# Untitled`. Use the editor placeholder: an empty `# ` isn't a heading to the parser.
    - Set the deck name from the first `#` heading once it has text, without counting it as an edit (use the `loading` flag).
