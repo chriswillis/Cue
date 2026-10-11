@@ -128,11 +128,13 @@ flowchart TD
 ```mermaid
 flowchart LR
   Mac["Your Mac<br/>~/Documents/GitHub/Cue"] -- "commit + push<br/>(GitHub Desktop)" --> GH["github.com/chriswillis/Cue"]
-  GH -- ".github/workflows/deploy.yml<br/>npm ci → npm run build" --> Pages["GitHub Pages"]
+  GH -- ".github/workflows/deploy.yml<br/>npm ci → build → smoke test" --> Pages["GitHub Pages"]
   Pages --> Site["https://cewillis.com/Cue/"]
 ```
 
 `vite.config.ts` stamps the version (from `package.json`) and the commit into the build. They show at the bottom of the menu.
+
+Before publishing, the workflow runs a **smoke test** (`npm run smoke`, `scripts/smoke.mjs`). It serves `dist/` under `/Cue/`, opens it in headless Chrome with an empty profile and checks that the sample deck fills the editor, the strip and the preview, and that the presenter window shows the slide. Any page error, Content-Security-Policy violation or missing file fails the deploy, so a broken build never reaches the live site. It's the only place the production CSP is exercised automatically: `npm run dev` has no CSP.
 
 ## The files
 
@@ -158,6 +160,7 @@ flowchart LR
 | `src/styles/slide.css` | How slides look: type, layouts, themes. |
 | `src/styles/app.css` | How the app looks: toolbar, editor, panels, menu. |
 | `src/sample.md` | The welcome deck. |
+| `scripts/smoke.mjs` | The smoke test the deploy runs on the built site. |
 
 ## Recipes
 
@@ -179,3 +182,4 @@ flowchart LR
 - In the browser console, `__cue` is a handle to the running app: `__cue.slides`, `__cue.parsed`, `__cue.goto(3)`, `__cue.updateSettings({ theme: 'nothing' })`.
 - DevTools → Application → IndexedDB → `cue` shows the deck library.
 - `npm run build` runs the TypeScript checker first. If it fails, the error says which file and line.
+- `npm run smoke` after a build tells you what the deploy would see. If a deploy fails on GitHub, open the run under the repo's **Actions** tab: the smoke step lists each check (`ok`, `FAIL`, `skip`) and the errors it caught.

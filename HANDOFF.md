@@ -2,7 +2,7 @@
 
 Read this first when you pick up the project in a new session. For how the code works, read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-**Status (2026-10-09):** alpha 0.1.0, live and in daily use. Steps 1–5 of "Next up" are built and tested locally, waiting for Chris to review and commit. Everything below is built, committed and deployed unless it's listed under "Next up" or "Ideas and open threads".
+**Status (2026-10-10):** alpha 0.1.0, live and in daily use. Steps 1–5 of "Next up" are committed. Step 6 (the deploy smoke test) is built and tested locally, waiting for Chris to review and commit. Everything below is built, committed and deployed unless it's listed under "Next up" or "Ideas and open threads".
 
 ---
 
@@ -21,10 +21,11 @@ A browser app where you write a markdown script, and Cue turns it into designed 
 npm install
 npm run dev        # http://localhost:5173
 npm run build      # tsc --noEmit, then vite build → dist/
+npm run smoke      # opens dist/ in headless Chrome and checks it works
 ```
 
 - **Stack:** Vite **8** (rolldown), TypeScript, CodeMirror 6, markdown-it 15, KaTeX, Fontsource fonts. No framework, no server.
-- **Deploy:** every push to `main` runs `.github/workflows/deploy.yml` (Node 22; checkout v7, setup-node v7, configure-pages v6, upload-pages-artifact v5, deploy-pages v5). Pages source is set to **GitHub Actions**, HTTPS is enforced, and the custom domain comes from the account's user site.
+- **Deploy:** every push to `main` runs `.github/workflows/deploy.yml` (Node 22; checkout v7, setup-node v7, configure-pages v6, upload-pages-artifact v5, deploy-pages v5). It runs `npm ci`, `npm run build`, then `npm run smoke`; if the smoke test fails, nothing is published and the live site stays as it was. Pages source is set to **GitHub Actions**, HTTPS is enforced, and the custom domain comes from the account's user site.
 - **Version:** `package.json` holds `version`. `vite.config.ts` injects `__APP_VERSION__` and `__APP_COMMIT__` (from `GITHUB_SHA`, or `git rev-parse` locally). They show at the bottom of the menu.
 - `base: './'`, so the build works from any subfolder.
 
@@ -35,7 +36,8 @@ npm run build      # tsc --noEmit, then vite build → dist/
 - **Testing:**
   - Headless Playwright against a dev server, with screenshots of slides in several themes, light and dark.
   - Chris's own `localhost:5173` can be checked in the desktop app's browser pane.
-  - Run `tsc --noEmit` and a build before handing over.
+  - Run `tsc --noEmit`, a build and `npm run smoke` before handing over.
+  - **Smoke test** (`scripts/smoke.mjs`): serves `dist/` under `/Cue/` like GitHub Pages, opens it in a fresh headless Chrome profile (so the sample deck loads) and fails on a page error, a CSP violation, a 404, an empty strip or preview, or a presenter window that doesn't show the slide. After the first failure it skips the rest, so a crash fails in about 15 seconds. It uses the machine's installed Chrome through `playwright-core` (no browser download); set `CHROME_PATH` to use another Chromium. In the cloud container: `CHROME_PATH=/opt/pw-browsers/chromium-1194/chrome-linux/chrome npm run smoke`.
 - **Comment-only changes:** compare the compiled output before and after with `esbuild --minify-whitespace`.
 - **Vite 8 on his Mac:** the device sandbox is linux-arm64 and can't run his `node_modules` (rolldown native binding). Build-test in a copy in the cloud container with his `package-lock.json`.
 
@@ -125,7 +127,7 @@ npm run build      # tsc --noEmit, then vite build → dist/
 
 ## 7. Next up: agreed plan
 
-Agreed with Chris on 2026-10-09, after reviewing a list of UX and security suggestions. Build in this order. **Steps 1–5 are built (2026-10-09, pending commit).** Import of a zip or several `.md` files (end of step 2) is not built yet. **Step 6 is next.** Step 2b (moving to `cue.cewillis.com`) needs import first and can go before or after 6.
+Agreed with Chris on 2026-10-09, after reviewing a list of UX and security suggestions. Build in this order. **Steps 1–5 are built and committed. Step 6 is built (2026-10-10, pending commit).** Import of a zip or several `.md` files (end of step 2) is not built yet. **Step 7 is next.** Step 2b (moving to `cue.cewillis.com`) needs import first.
 
 1. ✅ **Shared links: hide the key, keep the deck.**
    - After a share link decrypts, remove the `#v1k…` / `#v1p…` fragment from the address bar with `history.replaceState`. `clearHash()` already exists in `main.ts`; today it only runs on error or when leaving shared mode.
@@ -154,7 +156,7 @@ Agreed with Chris on 2026-10-09, after reviewing a list of UX and security sugge
      - `default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'none'; img-src 'self' https: data: blob:; font-src 'self' data:; connect-src 'self'`
      - `style-src` needs `'unsafe-inline'`: slide colors and the editor's line colors are inline styles.
      - `frame-ancestors` doesn't work in a meta tag.
-6. **Smoke test on every deploy.** In `.github/workflows/deploy.yml`, before publishing: build, serve `dist/`, open it in headless Chromium, and fail if there's a page error or no slides render (e.g. check `.slide` nodes in the strip). This would have caught the blank-page crash from the version number (`REPO` used before initialization).
+6. ✅ **Smoke test on every deploy.** (`scripts/smoke.mjs`, `npm run smoke`; see Testing) In `.github/workflows/deploy.yml`, before publishing: build, serve `dist/`, open it in headless Chromium, and fail if there's a page error or no slides render (e.g. check `.slide` nodes in the strip). This would have caught the blank-page crash from the version number (`REPO` used before initialization).
 7. **Home Screen app (manifest).** Add `manifest.webmanifest`, icons, `apple-touch-icon` and `display: standalone`.
    - **iPhone catch:** a Home Screen web app gets its **own storage**, separate from Safari, so decks made in Safari won't appear in it. Export/import (step 2) is how people move them, and the Alpha note should say so.
    - Skip an offline service worker at first. A wrong caching rule on a site that redeploys often leaves people stuck on an old version.
@@ -162,7 +164,7 @@ Agreed with Chris on 2026-10-09, after reviewing a list of UX and security sugge
    - In shared mode, show a placeholder for remote images ("Load images from example.com"), because remote images can track who opens a deck.
    - Trap focus in the Share and password dialogs, and return focus afterwards.
    - Load KaTeX only when a deck contains math. Present, the presenter window and print must still get it.
-   - Expose `__cue` only in development (`import.meta.env.DEV`). This is housekeeping, not security.
+   - Expose `__cue` only in development (`import.meta.env.DEV`). This is housekeeping, not security. (The smoke test doesn't use `__cue`, so this won't break it.)
    - Warn when two tabs edit the same deck: on save, check whether `savedAt` changed underneath, because the last save wins today.
 
 **Decided, don't revisit:**
@@ -176,9 +178,3 @@ Agreed with Chris on 2026-10-09, after reviewing a list of UX and security sugge
 - **Slides from iA's examples that Cue doesn't do yet:** a live timer slide; native charts.
 - **More minimal / "textural" themes:** Chris asked for "some more" and gave one (Nothing). Expect more theme briefs in the same format: name, description, typography and screenshots.
 - **Bundle size:** the main chunk is about 700 KB (fonts, KaTeX, CodeMirror). See step 8 of the plan.
-
-## 9. Starting a new session
-
-Paste something like this:
-
-> We're continuing work on Cue, my markdown presentation app. The project is in my connected folder `Cue`. Read `HANDOFF.md` and `docs/ARCHITECTURE.md` first, check `git status`, then let's build step 6 of "Next up" in HANDOFF.md (or: help me with …).
