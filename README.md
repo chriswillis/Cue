@@ -31,7 +31,7 @@ npm run build      # static site in dist/, deploy anywhere
 | `// chart: bar` or `// chart: line` | Draws the slide's table as a chart |
 | `// timer: 5:00` | A countdown that runs while you present |
 
-The **Markdown guide** (the ? button) has an example of each; click one to insert it. The editor suggests front matter keys and values, `//` directives, code languages and callout types as you type. A slide with too much to fit gets an orange ring on its number.
+The **Markdown guide** (the ? button) has an example of each; click one to insert it. It opens on its own when you start a new deck. The editor suggests front matter keys and values, `//` directives, code languages and callout types as you type. A slide with too much to fit gets an orange ring on its number.
 
 In the editor, everything the audience will see is written in its slide's color, and tab-indented lines show a faint ⇥. Notes are plain ink and `//` comments are grey.
 

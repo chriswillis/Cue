@@ -916,7 +916,12 @@ async function boot() {
         break;
       case 'new':
         closeMenu();
-        doNew();
+        // A blank page opens the Markdown guide, so people can build slides
+        // by clicking examples. Not on phones, where the panel would cover
+        // the editor.
+        doNew().then(() => {
+          if (!matchMedia('(max-width: 760px)').matches) toggleGuide(true);
+        });
         break;
       case 'open':
         closeMenu();
