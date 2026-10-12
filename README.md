@@ -195,7 +195,7 @@ src/
   presenter.ts  presenter window (BroadcastChannel)
   icons.ts      inline SVG icons
   styles/       slide.css (type, grid, layouts), app.css (editor chrome)
-  sample.md     the welcome deck
+  sample.md     the welcome deck, a tour of what Cue can do
 ```
 
 All theme colors come from [Flexoki](https://stephango.com/flexoki) by Steph Ango (MIT): warm paper and ink neutrals, with accents chosen per theme.

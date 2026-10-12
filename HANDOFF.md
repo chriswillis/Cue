@@ -43,6 +43,9 @@ npm run smoke      # opens dist/ in headless Chrome and checks it works
 
 ## 4. Conventions
 
+- **Nothing is the default theme** (for now, since 2026-10-12): `DEFAULT_SETTINGS.theme` in `parser.ts` and the `getTheme()` fallback. Decks with front matter keep their theme; a deck without one opens in Nothing.
+- **The sample deck is the product tour.** `src/sample.md` shows one feature per slide, and each slide's notes explain how it's done. Its voice: behind every great presentation lies a great story; Cue helps you write it, stays out of your way, and builds a design people will love and remember. Keep figures on it true (the "by the numbers" slide counts themes and layouts) and label example data as such.
+
 - **The text is the only state.** Deck settings live in the front matter. Only non-default values are written (`serializeFrontMatter`). The Design panel edits the front matter; it never stores settings anywhere else.
 - **Flexoki for every color.** That covers themes, editor slide colors and UI accents (`src/flexoki.ts`).
   - When tinting toward a neutral, mix in **oklab**, not oklch. oklch mixing made blue tints drift green.

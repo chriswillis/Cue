@@ -74,7 +74,7 @@ export interface Settings {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
-  theme: 'swiss',
+  theme: 'nothing',
   appearance: 'light',
   aspect: '16:9',
   titleFont: null,

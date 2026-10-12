@@ -479,7 +479,7 @@ export const THEME_ALIASES: Record<string, { theme: string; titleFont?: string; 
 };
 
 export function getTheme(id: string): Theme {
-  return THEMES.find((t) => t.id === id) ?? THEMES.find((t) => t.id === 'swiss')!;
+  return THEMES.find((t) => t.id === id) ?? THEMES.find((t) => t.id === 'nothing')!;
 }
 
 const r = (n: number) => `${Math.round(n * 10) / 10}px`;

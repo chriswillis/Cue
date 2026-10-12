@@ -170,7 +170,7 @@ Before publishing, the workflow runs a **smoke test** (`npm run smoke`, `scripts
 | `src/icons.ts` | Inline SVG icons. |
 | `src/styles/slide.css` | How slides look: type, layouts, themes. |
 | `src/styles/app.css` | How the app looks: toolbar, editor, panels, menu. |
-| `src/sample.md` | The welcome deck. |
+| `src/sample.md` | The welcome deck: a product tour, one feature per slide, with notes that explain each. |
 | `scripts/smoke.mjs` | The smoke test the deploy runs on the built site. |
 
 ## Recipes
