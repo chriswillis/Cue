@@ -104,7 +104,7 @@ Open **Design** to change the look. Nothing in your text changes.
   - title, body and background colors, set separately for light and dark: any Flexoki color, a pattern that changes every slide, or a custom color
   - header and footer slots, and a short title for `{title}`
   - aspect ratio
-- **Slide:** the current slide's layout
+- **Slide:** the current slide's layout, and the Markdown guide: every option as an example you click to insert
 
 ### Settings
 

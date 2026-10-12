@@ -705,6 +705,7 @@ async function boot() {
     current: () => current,
     update: (patch) => updateSettings(patch),
     setLayout: (layout) => setLayoutHint(layout),
+    insert: (code) => insertSnippet(code),
   });
 
   function toggleInspector(force?: boolean) {

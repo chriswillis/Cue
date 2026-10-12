@@ -4,6 +4,7 @@ import { THEMES, THEME_GROUPS, getTheme } from './themes';
 import { TYPEFACES, getTypeface } from './typefaces';
 import { PATTERNS, SWATCH_ROWS, previewCSS, getPattern } from './flexoki';
 import { icons } from './icons';
+import { guideGroupsHTML, guideCode } from './guide';
 
 /**
  * The Design panel: theme, fonts, size, colors (light + dark), header and
@@ -25,6 +26,8 @@ export interface InspectorHost {
   current(): number;
   update(patch: Partial<Settings>): void;
   setLayout(layout: string): void;
+  /** Add a Markdown guide example at the editor's cursor */
+  insert(code: string): void;
 }
 
 type ColorKey = 'titleColor' | 'bodyColor' | 'background';
@@ -153,11 +156,8 @@ export function inspectorHTML(): string {
         <p class="ins-hint">Auto picks a layout from your content. Choosing one adds a <code>// layout:</code> line to the slide.</p>
       </section>
 
-      <section class="ins-group" data-pane="slide">
-        <div class="ins-label">Markdown</div>
-        <p class="ins-hint">Every layout, directive and feature, with examples you can insert.</p>
-        <button class="ins-btn" data-act="help">Open the Markdown guide</button>
-      </section>
+      <p class="ins-hint guide-intro" data-pane="slide">Markdown guide. Click an example to add it at the cursor.</p>
+      ${guideGroupsHTML('data-pane="slide"')}
     </div>
     <div class="color-pop" hidden role="dialog" aria-label="Choose a color"></div>`;
 }
@@ -307,6 +307,11 @@ export class Inspector {
 
   private onClick(e: Event): void {
     const t = e.target as HTMLElement;
+    const code = guideCode(t);
+    if (code) {
+      this.host.insert(code);
+      return;
+    }
     const btn = t.closest<HTMLElement>('button');
     if (!btn) return;
     if (btn.dataset.tab) {

@@ -92,7 +92,7 @@ npm run smoke      # opens dist/ in headless Chrome and checks it works
 - Colors: Flexoki swatches, patterns, or custom, set separately for light and dark.
 - Three-slot header and footer with `{title} {number} {count} {date}`, and a `short:` title for `{title}`. Slots that don't fit are cut at a word.
 - Aspect ratio and a per-slide layout.
-- The **Markdown guide** is its own panel now (the ? button, or menu → Markdown guide): click an example to insert it.
+- The Markdown guide (`guide.ts`): every option as a grouped example (Slides, Layouts, Data and code, Text, Slide settings) that inserts at the cursor when clicked. It shows on the Design panel's Slide tab and in its own panel (the ? button, or menu → Markdown guide).
 
 **Markdown**
 

@@ -990,7 +990,8 @@ svg.ph { fill: currentColor; stroke: none; }
 
 /* ---------- Markdown guide (guide.ts): examples you click to insert ---------- */
 .guide .g-intro { margin: -2px 18px 8px; font-size: 12.5px; color: var(--ui-muted); }
-.guide .ins-group { display: grid; gap: 6px; }
+.guide-group { display: grid; gap: 6px; }
+.guide-intro { margin: 0 0 4px; }
 .g-item {
   display: grid;
   gap: 3px;
@@ -1020,3 +1021,4 @@ svg.ph { fill: currentColor; stroke: none; }
   color: var(--ui-fg);
 }
 .g-tab { color: var(--ui-faint); }
+

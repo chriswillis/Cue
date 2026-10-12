@@ -1,6 +1,7 @@
 /**
  * The Markdown guide: one example per layout and feature. Clicking an
- * example inserts it at the cursor, so people learn by trying.
+ * example inserts it at the cursor, so people learn by trying. It shows in
+ * two places: its own panel (the ? button) and the Design panel's Slide tab.
  *
  * Examples use real tabs (\t) for on-slide lines, exactly as people type them.
  * TO ADD AN EXAMPLE: add an entry to GUIDE; `code` is what gets inserted.
@@ -73,6 +74,26 @@ const esc = (s: string) => s.replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&
 /** Tabs show as ⇥ in the examples, like the editor's tab marks. */
 const show = (code: string) => esc(code).replace(/^\t/gm, '<span class="g-tab">⇥</span>');
 
+/**
+ * The examples, one section per group. `attrs` goes on each section (the
+ * Design panel passes data-pane="slide" so they show on its Slide tab).
+ */
+export function guideGroupsHTML(attrs = ''): string {
+  return GUIDE.map(
+    (g, gi) => `<section class="ins-group guide-group" ${attrs}><div class="ins-label">${g.group}</div>${g.items
+      .map((it, ii) => `<button class="g-item" data-g="${gi}:${ii}"><span class="g-title">${esc(it.title)}</span>${it.hint ? `<span class="g-hint">${esc(it.hint)}</span>` : ''}<pre class="g-code">${show(it.code)}</pre></button>`)
+      .join('')}</section>`,
+  ).join('');
+}
+
+/** The text an example button inserts, or null if it isn't one. */
+export function guideCode(target: EventTarget | null): string | null {
+  const b = (target as HTMLElement | null)?.closest?.<HTMLElement>('.g-item');
+  if (!b?.dataset.g) return null;
+  const [gi, ii] = b.dataset.g.split(':').map(Number);
+  return GUIDE[gi]?.items[ii]?.code ?? null;
+}
+
 export class Guide {
   private root: HTMLElement;
 
@@ -81,18 +102,10 @@ export class Guide {
     root.innerHTML = `
       <div class="ins-head"><h2>Markdown guide</h2><button class="icon-btn" data-act="close-guide" aria-label="Close">${icons.close}</button></div>
       <p class="g-intro">Click an example to add it at the cursor.</p>
-      <div class="ins-scroll">
-        ${GUIDE.map(
-          (g, gi) => `<section class="ins-group"><div class="ins-label">${g.group}</div>${g.items
-            .map((it, ii) => `<button class="g-item" data-g="${gi}:${ii}"><span class="g-title">${esc(it.title)}</span>${it.hint ? `<span class="g-hint">${esc(it.hint)}</span>` : ''}<pre class="g-code">${show(it.code)}</pre></button>`)
-            .join('')}</section>`,
-        ).join('')}
-      </div>`;
+      <div class="ins-scroll">${guideGroupsHTML()}</div>`;
     root.addEventListener('click', (e) => {
-      const b = (e.target as HTMLElement).closest<HTMLElement>('.g-item');
-      if (!b) return;
-      const [gi, ii] = b.dataset.g!.split(':').map(Number);
-      insert(GUIDE[gi].items[ii].code);
+      const code = guideCode(e.target);
+      if (code) insert(code);
     });
   }
 
