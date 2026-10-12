@@ -34,16 +34,18 @@ import './fonts';
 import './styles/app.css';
 import './styles/slide.css';
 import type { EditorView } from '@codemirror/view';
-import { createEditor, getParsed, revealSlide, setText } from './editor';
+import { createEditor, getParsed, revealSlide, setText, markOverflow } from './editor';
 import { serializeFrontMatter, type ParsedDoc, type Settings, type SlideSource } from './parser';
 import { renderSlide, fit, mount, renderNotes, numberSections, ASPECTS } from './render';
 import { Inspector } from './inspector';
+import { Guide } from './guide';
 import { injectThemeCSS, getTheme } from './themes';
 import { FileStore, kvGet, kvSet, download, listDecks, getDeck, putDeck, deleteDeck, newDeckId, persistStorage, type Deck, type Draft } from './storage';
 import { Stage } from './present';
 import { bootPresenter, channelName, type Msg } from './presenter';
 import { icons } from './icons';
 import { slideVars } from './badges';
+import { onHighlighterReady } from './markdown';
 import { parseShareFragment, decodeDeck, encodeDeck, ShareError, type SharedDeck } from './share';
 import { ShareDialog, askPassword, showLinkError } from './share-ui';
 import { zip } from './zip';
@@ -155,7 +157,7 @@ async function boot() {
   // re-renders only slide 7. Changing a setting changes every key, so a theme
   // switch re-renders everything.
   const keyFor = (s: SlideSource, p: ParsedDoc) =>
-    JSON.stringify([s.visibleMd, s.layoutHint, s.look, s.index, p.title, p.settings]);
+    JSON.stringify([s.visibleMd, s.layoutHint, s.look, s.imageFit, s.chart, s.timer, s.index, p.title, p.settings]);
 
   function renderAll() {
     parsed = getParsed(view);
@@ -172,6 +174,7 @@ async function boot() {
       return node;
     });
     numberSections(slides);
+    markOverflow(view, slides.flatMap((n, i) => (n.dataset.overflow ? [i] : [])));
     cache.clear();
     nextCache.forEach((v, k) => cache.set(k, v));
     current = Math.min(current, slides.length - 1);
@@ -190,6 +193,13 @@ async function boot() {
     renderTimer = window.setTimeout(renderAll, delay);
   };
 
+  // Syntax colors load on demand; re-render when they arrive.
+  onHighlighterReady(() => {
+    cache.clear();
+    inspector?.invalidateThumbs();
+    scheduleRender(0);
+  });
+
   // Re-measure once web fonts arrive, since metrics change.
   document.fonts?.addEventListener?.('loadingdone', () => {
     cache.clear();
@@ -202,7 +212,7 @@ async function boot() {
     strip.replaceChildren(
       ...slides.map((node, i) => {
         const b = document.createElement('button');
-        b.className = 'thumb' + (i === current ? ' is-current' : '');
+        b.className = 'thumb' + (i === current ? ' is-current' : '') + (node.dataset.overflow ? ' is-overflow' : '');
         b.dataset.i = String(i);
         b.setAttribute('aria-label', `Slide ${i + 1}`);
         b.setAttribute('style', slideVars(i, slides.length));
@@ -243,6 +253,9 @@ async function boot() {
     const src = parsed.slides[current];
     $('.pm-pos').textContent = `${current + 1} of ${slides.length}`;
     $('.pm-layout').textContent = node.dataset.layout === 'blank' ? 'Empty slide' : `${cap(node.dataset.layout!)} layout${src.layoutHint ? '' : ' · auto'}`;
+    const warn = $('.pm-warn');
+    warn.hidden = !node.dataset.overflow;
+    warn.textContent = 'Too much for one slide. Split it with ---';
     $('.preview-notes').innerHTML = src.notesMd ? renderNotes(src.notesMd) : '<p class="muted">No speaker notes. Paragraphs without a tab become notes.</p>';
   }
 
@@ -684,7 +697,7 @@ async function boot() {
   /* ---------------- inspector ---------------- */
   // The Design panel (inspector.ts) reads state through these callbacks and
   // writes through update/setLayout. It never touches the editor directly.
-  inspector = new Inspector($('.inspector'), {
+  inspector = new Inspector($('.inspector:not(.guide)'), {
     settings: () => parsed.settings,
     slide: () => parsed.slides[current],
     deckTitle: () => parsed.title,
@@ -695,11 +708,35 @@ async function boot() {
   });
 
   function toggleInspector(force?: boolean) {
-    const ins = $('.inspector');
+    const ins = $('.inspector:not(.guide)');
     const open = force ?? ins.hidden;
     ins.hidden = !open;
     $('[data-act="theme"]').setAttribute('aria-expanded', String(open));
-    if (open) inspector?.sync();
+    if (open) {
+      toggleGuide(false);
+      inspector?.sync();
+    }
+  }
+
+  /* ---------------- Markdown guide (guide.ts) ---------------- */
+  // Clicking an example inserts it at the cursor, on lines of its own.
+  function insertSnippet(code: string) {
+    const st = view.state;
+    const line = st.doc.lineAt(st.selection.main.head);
+    const blank = !line.text.trim();
+    const prev = line.number > 1 ? st.doc.line(line.number - 1).text.trim() : '';
+    const next = line.number < st.doc.lines ? st.doc.line(line.number + 1).text.trim() : '';
+    const insert = blank ? `${prev ? '\n' : ''}${code}${next ? '\n' : ''}` : `\n\n${code}${next ? '\n' : ''}`;
+    const from = blank ? line.from : line.to;
+    view.dispatch({ changes: { from, to: blank ? line.to : from, insert }, selection: { anchor: from + insert.length - (next ? 1 : 0) }, scrollIntoView: true, userEvent: 'input' });
+    view.focus();
+  }
+  const guide = new Guide($('.guide'), insertSnippet);
+  function toggleGuide(force?: boolean) {
+    const open = force ?? !guide.open;
+    guide.toggle(open);
+    $('[data-act="guide"]').setAttribute('aria-expanded', String(open));
+    if (open) toggleInspector(false);
   }
 
   /* ---------------- views ---------------- */
@@ -926,9 +963,13 @@ async function boot() {
         break;
       case 'help':
         closeMenu();
-        toggleInspector(true);
-        inspector?.showTab('slide');
-        $('.syntax').scrollIntoView({ behavior: 'smooth' });
+        toggleGuide(true);
+        break;
+      case 'guide':
+        toggleGuide();
+        break;
+      case 'close-guide':
+        toggleGuide(false);
         break;
     }
   });
@@ -1168,6 +1209,7 @@ function shellHTML(): string {
         <button role="tab" data-view="slides" title="Slides (${M}⌥3)">Slides</button>
       </div>
       <div class="bar-right">
+        <button class="icon-btn" data-act="guide" aria-expanded="false" aria-label="Markdown guide" title="Markdown guide">${icons.help}</button>
         <button class="btn ghost" data-act="share" aria-haspopup="dialog" aria-expanded="false" title="Share a link">${icons.share}<span>Share</span></button>
         <button class="btn ghost" data-act="theme" aria-expanded="false">${icons.theme}<span>Design</span></button>
         <button class="btn ghost" data-act="presenter" title="Presenter view (${M}⇧↵)">${icons.presenter}<span>Presenter</span></button>
@@ -1181,12 +1223,13 @@ function shellHTML(): string {
 
     <section class="preview-pane" aria-label="Slide preview">
       <div class="preview-stage"><div class="frame preview-frame" title="Double-click to present"></div></div>
-      <div class="preview-meta"><span class="pm-layout"></span><span class="pm-pos"></span></div>
+      <div class="preview-meta"><span class="pm-layout"></span><span class="pm-warn" hidden></span><span class="pm-pos"></span></div>
       <div class="preview-notes-wrap"><div class="pn-label">Speaker notes</div><div class="preview-notes"></div></div>
     </section>
 
     <section class="overview" aria-label="All slides"><div class="overview-grid"></div></section>
 
     <aside class="inspector" hidden aria-label="Design"></aside>
+    <aside class="inspector guide" hidden aria-label="Markdown guide"></aside>
   </div>`;
 }

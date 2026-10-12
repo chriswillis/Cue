@@ -56,7 +56,7 @@ export interface Theme {
   titleAlign: 'start' | 'center';
   bullet: 'square' | 'dot' | 'dash';
   numerals: 'lining' | 'oldstyle';
-  labelCase: 'uppercase' | 'none';
+  labelCase: 'uppercase' | 'none' | 'small-caps';
   labelTracking: string;
   defaultAppearance: 'light' | 'dark';
   header: string[]; // slot templates, see render.ts
@@ -112,13 +112,10 @@ const onColor = (bg: string, accent: string = paper): Palette => ({ bg, fg: pape
 const onTint = (bg: string, accent: string = BASE[950], title?: string): Palette => ({ bg, fg: BASE[950], title, muted: BASE[700], accent, rule: mix(black, 18), surface: mix(paper, 55) });
 
 export const THEMES: Theme[] = [
-  /* ---------------------------------------------------------------- */
-  /* Opinionated                                                       */
-  /* ---------------------------------------------------------------- */
   define({
     id: 'newyork',
     name: 'New York',
-    group: 'Opinionated',
+    group: 'Loud',
     description: 'Inter Black on yellow. Headlines in very different sizes.',
     display: 'inter',
     displayWeight: 820,
@@ -135,7 +132,7 @@ export const THEMES: Theme[] = [
   define({
     id: 'basel',
     name: 'Basel',
-    group: 'Opinionated',
+    group: 'Book',
     description: 'Noto Serif, white on black. Large serif headlines on a hard grid.',
     display: 'noto-serif',
     body: 'noto-serif',
@@ -153,13 +150,10 @@ export const THEMES: Theme[] = [
     dark: { ...inkDark(c('red', 400)), fg: paper },
   }),
 
-  /* ---------------------------------------------------------------- */
-  /* Vibrant                                                           */
-  /* ---------------------------------------------------------------- */
   define({
     id: 'sanfrancisco',
     name: 'San Francisco',
-    group: 'Vibrant',
+    group: 'Loud',
     description: 'The system font, bold. Every title in a different color.',
     display: 'system',
     body: 'system',
@@ -169,12 +163,12 @@ export const THEMES: Theme[] = [
     ratio: 1.45,
     defaultAppearance: 'dark',
     light: { ...inkLight('pattern:titles-light'), title: 'pattern:titles-light' },
-    dark: { ...inkDark('pattern:titles-dark'), title: 'pattern:titles-dark' },
+    dark: { ...inkDark('pattern:titles-dark'), bg: c('purple', 950), rule: c('purple', 850), surface: c('purple', 900), title: 'pattern:titles-dark' },
   }),
   define({
     id: 'la',
     name: 'LA',
-    group: 'Vibrant',
+    group: 'Color',
     description: 'Fraunces, soft and heavy. A new loud color on every slide.',
     display: 'fraunces',
     body: 'dm-sans',
@@ -195,13 +189,10 @@ export const THEMES: Theme[] = [
     dark: onColor('pattern:vivid'),
   }),
 
-  /* ---------------------------------------------------------------- */
-  /* Pastels                                                           */
-  /* ---------------------------------------------------------------- */
   define({
     id: 'copenhagen',
     name: 'Copenhagen',
-    group: 'Pastels',
+    group: 'Quiet',
     description: 'DM Sans, Nordic and calm. Pastel titles, lots of air.',
     display: 'dm-sans',
     body: 'dm-sans',
@@ -222,35 +213,11 @@ export const THEMES: Theme[] = [
     light: { bg: c('blue', 50), fg: BASE[900], title: c('blue', 700), muted: BASE[600], accent: c('blue', 600), rule: c('blue', 100), surface: paper },
     dark: { bg: BASE[950], fg: BASE[100], title: c('blue', 150), muted: BASE[500], accent: c('magenta', 200), rule: BASE[850], surface: BASE[900] },
   }),
-  define({
-    id: 'vancouver',
-    name: 'Vancouver',
-    group: 'Pastels',
-    description: 'Montserrat over a soft color that changes every slide.',
-    display: 'montserrat',
-    body: 'montserrat',
-    label: 'montserrat',
-    displayWeight: 650,
-    displayTracking: '-0.025em',
-    displayLeading: 1.04,
-    bodyLeading: 1.45,
-    base: 40,
-    ratio: 1.4,
-    radius: 10,
-    bullet: 'dot',
-    labelTracking: '0.1em',
-    defaultAppearance: 'dark',
-    light: onTint('pattern:pastel'),
-    dark: onColor('pattern:muted'),
-  }),
 
-  /* ---------------------------------------------------------------- */
-  /* Colorful                                                          */
-  /* ---------------------------------------------------------------- */
   define({
     id: 'tokyo',
     name: 'Tokyo',
-    group: 'Colorful',
+    group: 'Color',
     description: 'Top-to-bottom gradients in the colors of metro lines.',
     display: 'inter-tight',
     body: 'inter',
@@ -267,7 +234,7 @@ export const THEMES: Theme[] = [
   define({
     id: 'milano',
     name: 'Milano',
-    group: 'Colorful',
+    group: 'Color',
     description: 'Bodoni over jewel tones, gold details. Stylish and classy.',
     display: 'bodoni-moda',
     body: 'dm-sans',
@@ -289,13 +256,10 @@ export const THEMES: Theme[] = [
     dark: onColor('pattern:jewel', c('yellow', 200)),
   }),
 
-  /* ---------------------------------------------------------------- */
-  /* Classics                                                          */
-  /* ---------------------------------------------------------------- */
   define({
     id: 'zurich',
     name: 'Zurich',
-    group: 'Classics',
+    group: 'Plain',
     description: 'Minimal Swiss design. One headline size for every level.',
     display: 'inter',
     displayWeight: 560,
@@ -312,7 +276,7 @@ export const THEMES: Theme[] = [
   define({
     id: 'paris',
     name: 'Paris',
-    group: 'Classics',
+    group: 'Book',
     description: 'Cormorant, centered. The background alternates slide to slide.',
     display: 'cormorant',
     body: 'cormorant',
@@ -336,31 +300,10 @@ export const THEMES: Theme[] = [
     dark: { bg: 'pattern:alt-night', fg: paper, muted: BASE[300], accent: c('red', 300), rule: BASE[800], surface: BASE[950] },
   }),
 
-  /* ---------------------------------------------------------------- */
-  /* Typographic                                                       */
-  /* ---------------------------------------------------------------- */
-  define({
-    id: 'helvetica',
-    name: 'Helvetica',
-    group: 'Typographic',
-    description: 'Swiss style, sans serif, with a strong and readable hierarchy.',
-    display: 'helvetica',
-    body: 'helvetica',
-    label: 'helvetica',
-    displayWeight: 700,
-    displayTracking: '-0.035em',
-    displayLeading: 0.98,
-    base: 44,
-    ratio: 1.5,
-    coverBoost: 1.35,
-    margin: [120, 100],
-    light: inkLight(c('red', 600)),
-    dark: { ...inkDark(c('red', 400)), fg: paper },
-  }),
   define({
     id: 'garamond',
     name: 'Garamond',
-    group: 'Typographic',
+    group: 'Book',
     description: 'EB Garamond. Renaissance book typography with rubric red.',
     display: 'eb-garamond',
     body: 'eb-garamond',
@@ -382,13 +325,10 @@ export const THEMES: Theme[] = [
     dark: { bg: BASE[950], fg: BASE[100], muted: BASE[500], accent: c('red', 400), rule: BASE[800], surface: BASE[900] },
   }),
 
-  /* ---------------------------------------------------------------- */
-  /* Originals                                                         */
-  /* ---------------------------------------------------------------- */
   define({
     id: 'swiss',
     name: 'Swiss',
-    group: 'Originals',
+    group: 'Plain',
     description: 'Inter Tight on a strict grid. Paper and ink, red accent.',
     display: 'inter-tight',
     displayWeight: 680,
@@ -399,7 +339,7 @@ export const THEMES: Theme[] = [
   define({
     id: 'editorial',
     name: 'Editorial',
-    group: 'Originals',
+    group: 'Book',
     description: 'Newsreader serif on warm paper. Old-style figures, orange ink.',
     display: 'newsreader',
     body: 'newsreader',
@@ -419,13 +359,14 @@ export const THEMES: Theme[] = [
     bullet: 'dash',
     numerals: 'oldstyle',
     labelTracking: '0.06em',
+    header: ['', '', '{date}'],
     light: { bg: BASE[50], fg: black, muted: BASE[600], accent: c('orange', 600), rule: BASE[200], surface: BASE[100] },
-    dark: { bg: BASE[950], fg: BASE[100], muted: BASE[500], accent: c('orange', 400), rule: BASE[800], surface: BASE[900] },
+    dark: { bg: BASE[900], fg: BASE[100], muted: BASE[400], accent: c('orange', 400), rule: BASE[800], surface: BASE[850] },
   }),
   define({
     id: 'plex',
     name: 'Plex',
-    group: 'Originals',
+    group: 'Plain',
     description: 'IBM Plex with mono labels. Technical, calm, blue.',
     display: 'plex-sans',
     body: 'plex-sans',
@@ -448,7 +389,7 @@ export const THEMES: Theme[] = [
   define({
     id: 'poster',
     name: 'Poster',
-    group: 'Originals',
+    group: 'Loud',
     description: 'Space Grotesk, oversized. Blue and yellow, loud on purpose.',
     display: 'space-grotesk',
     body: 'space-grotesk',
@@ -469,7 +410,7 @@ export const THEMES: Theme[] = [
   define({
     id: 'quiet',
     name: 'Quiet',
-    group: 'Originals',
+    group: 'Quiet',
     description: 'Instrument Serif over Inter. Soft stone and green, lots of air.',
     display: 'instrument-serif',
     displayWeight: 400,
@@ -491,13 +432,10 @@ export const THEMES: Theme[] = [
     dark: { bg: BASE[950], fg: BASE[100], muted: BASE[500], accent: c('green', 400), rule: BASE[850], surface: BASE[900] },
   }),
 
-  /* ---------------------------------------------------------------- */
-  /* Minimal                                                           */
-  /* ---------------------------------------------------------------- */
   define({
     id: 'nothing',
     name: 'Nothing',
-    group: 'Minimal',
+    group: 'Quiet',
     description: 'Museum-placard minimalism: bone ground, thin Hanken Grotesk at dramatic scale, mono field notes, hairlines and one red hollow circle.',
     display: 'hanken-grotesk',
     body: 'hanken-grotesk',
@@ -523,19 +461,55 @@ export const THEMES: Theme[] = [
   }),
 ];
 
-export const THEME_GROUPS = [...new Set(THEMES.map((t) => t.group))];
+/** The order themes appear in within their group. */
+const ORDER = ['swiss', 'zurich', 'plex', 'garamond', 'editorial', 'paris', 'basel', 'newyork', 'poster', 'sanfrancisco', 'la', 'tokyo', 'milano', 'quiet', 'copenhagen', 'nothing'];
+THEMES.sort((a, b) => ORDER.indexOf(a.id) - ORDER.indexOf(b.id));
+
+/** Design panel groups, by how a theme feels rather than where it came from. */
+export const THEME_GROUPS = ['Plain', 'Book', 'Loud', 'Color', 'Quiet'];
+
+/**
+ * Themes that were merged into others (Oct 2026). Old decks keep their look:
+ * the parser swaps in the surviving theme plus the fonts that made the
+ * difference, unless the deck already chose its own fonts.
+ */
+export const THEME_ALIASES: Record<string, { theme: string; titleFont?: string; bodyFont?: string }> = {
+  vancouver: { theme: 'la', titleFont: 'montserrat', bodyFont: 'montserrat' },
+  helvetica: { theme: 'swiss', titleFont: 'helvetica', bodyFont: 'helvetica' },
+};
 
 export function getTheme(id: string): Theme {
-  return THEMES.find((t) => t.id === id) ?? THEMES[0];
+  return THEMES.find((t) => t.id === id) ?? THEMES.find((t) => t.id === 'swiss')!;
 }
 
 const r = (n: number) => `${Math.round(n * 10) / 10}px`;
 
+/** The type scale as CSS variables, for a theme at a given ratio. */
+export function stepVars(t: Theme, ratio: number): string[] {
+  const step = (n: number) => r(t.base * Math.pow(ratio, n));
+  return [
+    `--step--1:${step(-1)}`,
+    `--step-0:${step(0)}`,
+    `--step-1:${step(1)}`,
+    `--step-2:${step(2)}`,
+    `--step-3:${step(3)}`,
+    `--step-4:${step(4)}`,
+    `--step-uniform:${step(3)}`,
+    `--step-cover:${r(t.base * Math.pow(ratio, 4) * t.coverBoost)}`,
+  ];
+}
+
+/** Label style: capitals, true small caps, or plain text. */
+export function labelVars(style: Theme['labelCase']): string[] {
+  if (style === 'small-caps') return ['--label-case:none', '--label-caps:all-small-caps'];
+  return [`--label-case:${style}`, '--label-caps:normal'];
+}
+
 /** Typographic variables per theme class. Palettes are applied per slide. */
 export function themeCSS(): string {
   return THEMES.map((t) => {
-    const step = (n: number) => r(t.base * Math.pow(t.ratio, n));
     const vars = [
+      ...labelVars(t.labelCase),
       `--font-display:${stackOf(t.display)}`,
       `--font-body:${stackOf(t.body)}`,
       `--font-label:${stackOf(t.label)}`,
@@ -548,21 +522,13 @@ export function themeCSS(): string {
       `--subtitle-weight:${t.subtitleWeight}`,
       `--body-weight:${t.bodyWeight}`,
       `--body-leading:${t.bodyLeading}`,
-      `--step--1:${step(-1)}`,
-      `--step-0:${step(0)}`,
-      `--step-1:${step(1)}`,
-      `--step-2:${step(2)}`,
-      `--step-3:${step(3)}`,
-      `--step-4:${step(4)}`,
-      `--step-uniform:${step(3)}`,
-      `--step-cover:${r(t.base * Math.pow(t.ratio, 4) * t.coverBoost)}`,
+      ...stepVars(t, t.ratio),
       `--label-size:${r(Math.max(20, t.base * 0.56))}`,
       `--mx:${t.margin[0]}px`,
       `--my:${t.margin[1]}px`,
       `--gutter:${t.gutter}px`,
       `--radius:${t.radius}px`,
       `--numerals:${t.numerals === 'oldstyle' ? 'oldstyle-nums proportional-nums' : 'lining-nums proportional-nums'}`,
-      `--label-case:${t.labelCase}`,
       `--label-tracking:${t.labelTracking}`,
       t.bullet === 'square'
         ? '--bullet-w:0.3em;--bullet-h:0.3em;--bullet-r:0;--bullet-y:0.52em'

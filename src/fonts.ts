@@ -26,7 +26,8 @@ import '@fontsource-variable/eb-garamond/wght.css';
 import '@fontsource-variable/eb-garamond/wght-italic.css';
 import '@fontsource-variable/dm-sans/opsz.css';
 import '@fontsource-variable/dm-sans/opsz-italic.css';
-import '@fontsource-variable/fraunces/soft.css';
+// Fraunces with every axis: optical size for big titles, SOFT for LA
+import '@fontsource-variable/fraunces/full.css';
 import '@fontsource-variable/bodoni-moda/wght.css';
 import '@fontsource-variable/bodoni-moda/wght-italic.css';
 import '@fontsource-variable/cormorant/wght.css';
@@ -35,3 +36,19 @@ import '@fontsource-variable/noto-sans/wght.css';
 import '@fontsource-variable/noto-sans/wght-italic.css';
 import '@fontsource-variable/hanken-grotesk/wght.css';
 import '@fontsource-variable/hanken-grotesk/wght-italic.css';
+
+// Added Oct 2026: faces with a clear job (see typefaces.ts)
+import '@fontsource-variable/instrument-sans/wdth.css';
+import '@fontsource-variable/instrument-sans/wdth-italic.css';
+import '@fontsource-variable/geist/wght.css';
+import '@fontsource-variable/bricolage-grotesque/standard.css';
+import '@fontsource-variable/archivo/wdth.css';
+import '@fontsource-variable/archivo/wdth-italic.css';
+import '@fontsource-variable/atkinson-hyperlegible-next/wght.css';
+import '@fontsource-variable/atkinson-hyperlegible-next/wght-italic.css';
+import '@fontsource-variable/source-serif-4/opsz.css';
+import '@fontsource-variable/source-serif-4/opsz-italic.css';
+import '@fontsource-variable/literata/opsz.css';
+import '@fontsource-variable/literata/opsz-italic.css';
+import '@fontsource-variable/martian-mono/standard.css';
+import '@fontsource-variable/geist-mono/wght.css';

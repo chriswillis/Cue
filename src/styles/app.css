@@ -219,6 +219,8 @@ code { font-family: var(--font-editor); font-size: 0.92em; }
 }
 .seg.full { display: flex; }
 .seg.full button { flex: 1; }
+/* Narrow segments (type controls): tighter padding so four options fit */
+.seg.seg-small button { padding: 0 4px; font-size: 12px; min-width: 0; white-space: nowrap; }
 
 /* ---------- Menu ---------- */
 
@@ -747,10 +749,6 @@ svg.ph { fill: currentColor; stroke: none; }
 .switch input:checked + .track::after { transform: translateX(12px); }
 .switch input:focus-visible + .track { outline: 2px solid var(--ui-accent); outline-offset: 2px; }
 
-.syntax dl { display: grid; grid-template-columns: auto 1fr; gap: 8px 14px; margin: 0; font-size: 12.5px; }
-.syntax dt { white-space: nowrap; }
-.syntax dt code { padding: 1px 5px; border-radius: 4px; background: var(--ui-sunken); font-size: 11.5px; }
-.syntax dd { margin: 0; color: var(--ui-muted); }
 
 /* ---------- Toast ---------- */
 
@@ -965,3 +963,60 @@ svg.ph { fill: currentColor; stroke: none; }
 .sm-card .sm-error { min-height: 18px; margin: 4px 0 8px; color: #AF3029; font-size: 12.5px; }
 .sm-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .sm-actions .btn { height: 32px; }
+
+/* ---------- Too much for one slide (fit() ran out of steps) ---------- */
+:root { --ui-warn: #BC5215; } /* Flexoki orange-600 */
+@media (prefers-color-scheme: dark) { :root { --ui-warn: #DA702C; } }
+.cm-l-badge.is-overflow::after { box-shadow: 0 0 0 2px var(--ui-warn); }
+.thumb.is-overflow .thumb-num { box-shadow: 0 0 0 2px var(--ui-warn); }
+.thumb.is-overflow .frame { box-shadow: 0 0 0 2px var(--ui-warn); }
+.preview-meta .pm-warn { color: var(--ui-warn); font-weight: 560; }
+
+/* ---------- Autocomplete (complete.ts) ---------- */
+.editor .cm-tooltip.cm-tooltip-autocomplete {
+  border: 1px solid var(--ui-line);
+  border-radius: 10px;
+  background: var(--ui-bg);
+  box-shadow: var(--ui-shadow);
+  padding: 4px;
+  overflow: hidden;
+}
+.editor .cm-tooltip-autocomplete > ul { font: 500 13px/1.3 var(--font-ui); max-height: 16em; }
+.editor .cm-tooltip-autocomplete > ul > li { padding: 5px 10px !important; border-radius: 6px; color: var(--ui-fg); }
+.editor .cm-tooltip-autocomplete > ul > li[aria-selected] { background: var(--ui-accent); color: #fff; }
+.editor .cm-completionDetail { margin-left: 1em; font-style: normal; color: var(--ui-muted); }
+.editor .cm-tooltip-autocomplete > ul > li[aria-selected] .cm-completionDetail { color: oklch(1 0 0 / 0.8); }
+.editor .cm-completionMatchedText { text-decoration: none; font-weight: 700; }
+
+/* ---------- Markdown guide (guide.ts): examples you click to insert ---------- */
+.guide .g-intro { margin: -2px 18px 8px; font-size: 12.5px; color: var(--ui-muted); }
+.guide .ins-group { display: grid; gap: 6px; }
+.g-item {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  padding: 9px 10px 10px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: none;
+  color: var(--ui-fg);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 120ms, border-color 120ms;
+}
+.g-item:hover { background: var(--ui-hover); }
+.g-item:focus-visible { outline: none; border-color: var(--ui-accent); }
+.g-item:active { background: var(--ui-sunken); }
+.g-title { font-size: 13px; font-weight: 600; }
+.g-hint { font-size: 12px; color: var(--ui-muted); }
+.g-code {
+  margin: 4px 0 0;
+  padding: 7px 9px;
+  border-radius: 6px;
+  background: var(--ui-sunken);
+  font: 12px/1.5 'JetBrains Mono Variable', ui-monospace, monospace;
+  font-variant-ligatures: none;
+  white-space: pre-wrap;
+  color: var(--ui-fg);
+}
+.g-tab { color: var(--ui-faint); }

@@ -26,6 +26,8 @@
  * toSettings() and serializeFrontMatter(). Only non-default values are written.
  */
 
+import { THEME_ALIASES } from './themes';
+
 export type LineRole =
   | 'frontmatter'
   | 'separator'
@@ -38,6 +40,13 @@ export type LineRole =
   | 'blank';
 
 export type Size = 'S' | 'M' | 'L' | 'XL';
+/** Type controls. null everywhere means "the theme's own choice". */
+export type Contrast = 'subtle' | 'standard' | 'dramatic';
+export type Leading = 'tight' | 'normal' | 'loose';
+export type TitleWeight = 'light' | 'regular' | 'bold';
+export type Align = 'start' | 'center';
+export type Labels = 'caps' | 'small-caps' | 'normal';
+export type Numerals = 'lining' | 'oldstyle';
 /** [light, dark]; null means "use the theme's value". */
 export type ColorPair = [string | null, string | null];
 
@@ -54,6 +63,14 @@ export interface Settings {
   /** Three slot templates each (left, center, right); null = theme default. */
   header: string[] | null;
   footer: string[] | null;
+  /** A short deck title for {title} in headers and footers; null = the first # heading. */
+  short: string | null;
+  contrast: Contrast | null;
+  leading: Leading | null;
+  weight: TitleWeight | null;
+  align: Align | null;
+  labels: Labels | null;
+  numerals: Numerals | null;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -68,7 +85,25 @@ export const DEFAULT_SETTINGS: Settings = {
   background: [null, null],
   header: null,
   footer: null,
+  short: null,
+  contrast: null,
+  leading: null,
+  weight: null,
+  align: null,
+  labels: null,
+  numerals: null,
 };
+
+/** The values each type control accepts, in the order the Design panel shows them. */
+export const TYPE_OPTIONS = {
+  contrast: ['subtle', 'standard', 'dramatic'],
+  leading: ['tight', 'normal', 'loose'],
+  weight: ['light', 'regular', 'bold'],
+  align: ['start', 'center'],
+  labels: ['caps', 'small-caps', 'normal'],
+  numerals: ['lining', 'oldstyle'],
+} as const;
+export type TypeKey = keyof typeof TYPE_OPTIONS;
 
 export interface SlideSource {
   index: number;
@@ -80,6 +115,12 @@ export interface SlideSource {
   layoutHint?: string;
   /** `// dark`, `// light` or `// invert`: this slide's appearance */
   look?: 'dark' | 'light' | 'invert';
+  /** `// image: contain` shows whole images (logos, diagrams) instead of cropping */
+  imageFit?: 'contain' | 'cover';
+  /** `// chart: bar` or `line`: the slide's table is drawn as a chart */
+  chart?: 'bar' | 'line';
+  /** `// timer: 5:00`: a countdown, in seconds */
+  timer?: number;
 }
 
 export interface ParsedDoc {
@@ -104,6 +145,10 @@ const RE_TABLE = /^\|.*\|\s*$/;
 const RE_COMMENT = /^\s*\/\//;
 const RE_LAYOUT = /^\s*\/\/\s*layout\s*:\s*([\w-]+)/i;
 const RE_LOOK = /^\s*\/\/\s*(dark|light|invert)\s*$/i;
+const RE_IMAGE_FIT = /^\s*\/\/\s*image\s*:\s*(contain|cover)\s*$/i;
+const RE_CHART = /^\s*\/\/\s*chart\s*:\s*(bar|column|line)\s*$/i;
+/** `// timer: 5:00`, `// timer: 90` (seconds) or `// timer: 5 min` */
+const RE_TIMER = /^\s*\/\/\s*timer\s*:\s*(\d{1,3})(?::(\d{1,2})|\s*(m|min|minutes?))?\s*$/i;
 const RE_FM_LINE = /^\s*([\w-]+)\s*:\s*(.*?)\s*$/;
 
 function parseFrontMatter(lines: string[]): { end: number; values: Record<string, string> } | null {
@@ -141,16 +186,28 @@ function parseSlots(v: string | undefined): string[] | null {
 function toSettings(values: Record<string, string>): Settings {
   const s: Settings = { ...DEFAULT_SETTINGS };
   if (values.theme) s.theme = values.theme.toLowerCase().replace(/\s+/g, '');
+  const alias = THEME_ALIASES[s.theme];
   if (values.appearance === 'dark' || values.appearance === 'light') s.appearance = values.appearance;
   if (['16:9', '16:10', '4:3', '9:16'].includes(values.aspect)) s.aspect = values.aspect as Settings['aspect'];
   if (values['title-font']) s.titleFont = values['title-font'];
   if (values['body-font']) s.bodyFont = values['body-font'];
+  if (alias) {
+    // A merged theme: its successor, with the fonts that set it apart
+    s.theme = alias.theme;
+    if (!s.titleFont && alias.titleFont) s.titleFont = alias.titleFont;
+    if (!s.bodyFont && alias.bodyFont) s.bodyFont = alias.bodyFont;
+  }
   if (['S', 'M', 'L', 'XL'].includes((values.size ?? '').toUpperCase())) s.size = values.size.toUpperCase() as Size;
   s.titleColor = parsePair(values['title-color']);
   s.bodyColor = parsePair(values['body-color']);
   s.background = parsePair(values.background);
   s.header = parseSlots(values.header);
   s.footer = parseSlots(values.footer);
+  if (values.short) s.short = values.short;
+  for (const key of Object.keys(TYPE_OPTIONS) as TypeKey[]) {
+    const v = (values[key] ?? '').toLowerCase().replace(/\s+/g, '-');
+    if ((TYPE_OPTIONS[key] as readonly string[]).includes(v)) (s as any)[key] = v;
+  }
   return s;
 }
 
@@ -172,6 +229,8 @@ export function serializeFrontMatter(s: Settings): string {
   };
   slots('header', s.header);
   slots('footer', s.footer);
+  if (s.short) lines.push(`short: "${s.short.replace(/"/g, "'")}"`);
+  for (const key of Object.keys(TYPE_OPTIONS) as TypeKey[]) if (s[key]) lines.push(`${key}: ${s[key]}`);
   return `---\n${lines.join('\n')}\n---`;
 }
 
@@ -197,6 +256,9 @@ export function parse(text: string): ParsedDoc {
   let notesBreak = false;
   let layoutHint: string | undefined;
   let look: SlideSource['look'];
+  let imageFit: SlideSource['imageFit'];
+  let chart: SlideSource['chart'];
+  let timer: SlideSource['timer'];
   let slideStart = start;
   let fence: { marker: string; visible: boolean } | null = null;
 
@@ -219,6 +281,9 @@ export function parse(text: string): ParsedDoc {
       notesMd: notes.join('\n').trim(),
       layoutHint,
       look,
+      imageFit,
+      chart,
+      timer,
     });
     visible = [];
     notes = [];
@@ -226,6 +291,9 @@ export function parse(text: string): ParsedDoc {
     notesBreak = false;
     layoutHint = undefined;
     look = undefined;
+    imageFit = undefined;
+    chart = undefined;
+    timer = undefined;
   };
 
   for (let i = start; i < lines.length; i++) {
@@ -263,6 +331,12 @@ export function parse(text: string): ParsedDoc {
       if (m) layoutHint = m[1].toLowerCase();
       const l = RE_LOOK.exec(raw);
       if (l) look = l[1].toLowerCase() as SlideSource['look'];
+      const f = RE_IMAGE_FIT.exec(raw);
+      if (f) imageFit = f[1].toLowerCase() as SlideSource['imageFit'];
+      const ch = RE_CHART.exec(raw);
+      if (ch) chart = ch[1].toLowerCase() === 'line' ? 'line' : 'bar';
+      const tm = RE_TIMER.exec(raw);
+      if (tm) timer = tm[2] !== undefined ? Number(tm[1]) * 60 + Number(tm[2]) : tm[3] ? Number(tm[1]) * 60 : Number(tm[1]);
       continue;
     }
 

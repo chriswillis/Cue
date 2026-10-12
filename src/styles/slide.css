@@ -15,7 +15,8 @@
   color: var(--fg);
   font-family: var(--font-body);
   font-weight: var(--body-weight);
-  font-size: calc(var(--step-0) * var(--fs));
+  /* --grow (set by fit) enlarges body text on sparse slides; titles keep their size */
+  font-size: calc(var(--step-0) * var(--fs) * var(--grow, 1));
   line-height: var(--body-leading);
   font-variant-numeric: var(--numerals);
   font-kerning: normal;
@@ -58,7 +59,10 @@
   margin: 0;
   font-family: var(--font-display);
   font-weight: var(--display-weight);
-  letter-spacing: var(--display-tracking);
+  /* Tracking tightens with size: full at title sizes, little at step 1.
+     Word spacing gives back what the tracking takes, so words don't run together. */
+  letter-spacing: calc(var(--display-tracking) * var(--track-k, 1));
+  word-spacing: calc(var(--display-tracking) * -1 * var(--track-k, 1));
   line-height: var(--display-leading);
   text-wrap: balance;
   font-variant-numeric: lining-nums;
@@ -67,10 +71,12 @@
 }
 .slide h1 { font-size: calc(var(--step-4) * var(--fs)); }
 .slide h2 { font-size: calc(var(--step-3) * var(--fs)); }
-.slide h3 { font-size: calc(var(--step-2) * var(--fs)); line-height: calc(var(--display-leading) + 0.04); }
-.slide h4 { font-size: calc(var(--step-1) * var(--fs)); line-height: 1.15; }
+.slide h3 { --track-k: 0.65; font-size: calc(var(--step-2) * var(--fs)); line-height: calc(var(--display-leading) + 0.04); }
+.slide h4 { --track-k: 0.4; font-size: calc(var(--step-1) * var(--fs)); line-height: 1.15; }
 .slide h5,
-.slide h6 { font-size: calc(var(--step-0) * var(--fs)); line-height: 1.2; }
+.slide h6 { --track-k: 0.2; font-size: calc(var(--step-0) * var(--fs)); line-height: 1.2; }
+/* Titles are always set big, whatever their level */
+.slide .s-title { --track-k: 1; }
 
 .slide .s-subtitle {
   margin-top: 0.4em;
@@ -82,11 +88,17 @@
   color: var(--muted);
 }
 
-.slide p { margin: 0; text-wrap: pretty; }
+/* :where() keeps these resets weaker than the `> * + *` spacing rules below,
+   so a paragraph, list, quote or code block after another gets its gap */
+:where(.slide) :where(p, ul, ol, dl, pre, blockquote) { margin: 0; }
+:where(.slide) p { text-wrap: pretty; }
 .s-body > * + *,
 .s-intro > * + *,
 .s-section-body > * + *,
 .s-overlay > * + * { margin-top: 0.7em; }
+
+/* Hanging punctuation: fit() pulls a leading quote or bracket into the margin */
+.slide .s-hang { display: inline-block; }
 
 .slide strong { font-weight: 640; }
 .slide em { font-style: italic; }
@@ -99,7 +111,7 @@
 }
 
 .slide ul,
-.slide ol { margin: 0; padding: 0; list-style: none; }
+.slide ol { padding: 0; list-style: none; }
 .slide li { position: relative; padding-left: 1.05em; text-wrap: pretty; }
 .slide li + li { margin-top: 0.36em; }
 .slide li > ul,
@@ -131,24 +143,28 @@
 .slide code {
   font-family: var(--font-mono);
   font-size: 0.86em;
+  /* Code shows exactly what was typed: no ligatures (<= stays <=) */
+  font-variant-ligatures: none;
+  font-feature-settings: 'kern';
   padding: 0.06em 0.28em;
   border-radius: min(var(--radius), 6px);
   background: var(--surface);
 }
 .slide pre {
-  margin: 0;
   padding: 0.9em 1.1em;
   border-radius: var(--radius);
   background: var(--surface);
-  font-size: 0.7em;
+  /* --code-k is set by fit(): code shrinks to fit its width before it wraps */
+  font-size: calc(0.7em * var(--code-k, 1));
   line-height: 1.55;
-  white-space: pre-wrap;
+  white-space: pre;
   overflow: hidden;
+  tab-size: 4;
 }
+.slide pre.is-wrapped { white-space: pre-wrap; }
 .slide pre code { padding: 0; background: none; font-size: 1em; }
 
 .slide blockquote {
-  margin: 0;
   padding-left: 0.9em;
   border-left: calc(var(--step-0) * 0.12) solid var(--accent);
   font-family: var(--font-display);
@@ -169,6 +185,7 @@
   font-weight: 500;
   font-size: 0.72em;
   text-transform: var(--label-case);
+  font-variant-caps: var(--label-caps, normal);
   letter-spacing: var(--label-tracking);
   color: var(--muted);
   padding: 0 1em 0.6em 0;
@@ -189,6 +206,7 @@
   font-weight: 500;
   line-height: 1.3;
   text-transform: var(--label-case);
+  font-variant-caps: var(--label-caps, normal);
   letter-spacing: var(--label-tracking);
   color: var(--muted);
   text-wrap: balance;
@@ -204,6 +222,7 @@
   font-weight: 450;
   line-height: 1.45;
   text-transform: var(--label-case);
+  font-variant-caps: var(--label-caps, normal);
   letter-spacing: var(--label-tracking);
   color: var(--muted);
 }
@@ -259,8 +278,7 @@
 .slide li.s-task.is-done { color: var(--muted); }
 
 /* Definition lists */
-.slide dl { margin: 0; }
-.slide dt { font-family: var(--font-display); font-weight: var(--display-weight); letter-spacing: var(--display-tracking); color: var(--title, var(--fg)); }
+.slide dt { font-family: var(--font-display); font-weight: var(--display-weight); letter-spacing: calc(var(--display-tracking) * 0.2); color: var(--title, var(--fg)); }
 .slide dt + dd { margin-top: 0.15em; }
 .slide dd { margin: 0; color: var(--muted); }
 .slide dd + dt { margin-top: 0.8em; }
@@ -273,6 +291,7 @@
   font-family: var(--font-label);
   font-size: calc(var(--label-size) * 1.1);
   text-transform: var(--label-case);
+  font-variant-caps: var(--label-caps, normal);
   letter-spacing: var(--label-tracking);
   color: var(--muted);
 }
@@ -282,8 +301,12 @@
 /* Math (KaTeX) */
 .slide eq { display: inline; }
 .slide eqn,
-.slide section.eqno { display: block; margin: 0.4em 0; text-align: center; }
+.slide section.eqno { display: block; margin: 0.2em 0; text-align: start; }
 .slide .katex { font-size: 1.08em; }
+/* Display math reads like a figure: one step up, aligned with the text */
+.slide .katex-display { margin: 0; text-align: start; }
+.slide .katex-display > .katex { font-size: calc(var(--step-1) * var(--fs)); text-align: start; }
+.align-center:is(.layout-statement, .layout-quote) .katex-display > .katex { text-align: center; }
 
 /* Markdown footnotes, grouped at the bottom */
 .slide .s-footnotes .footnotes-list { counter-reset: fn; }
@@ -308,6 +331,16 @@
   color: var(--accent);
 }
 .slide .s-footnotes .footnotes-list p { margin: 0; }
+/* [^1] notes are sentences: body face, sentence case. ###### lines stay labels. */
+.slide .s-footnotes section.footnotes {
+  font-family: var(--font-body);
+  font-size: calc(var(--step-0) * 0.62 * var(--fs));
+  font-weight: var(--body-weight);
+  line-height: 1.4;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.slide .s-footnotes .footnotes-list > li::before { font-family: var(--font-label); font-size: 0.9em; }
 
 /* ---------- Figures ---------- */
 
@@ -336,6 +369,7 @@
   font-family: var(--font-label);
   font-size: var(--label-size);
   text-transform: var(--label-case);
+  font-variant-caps: var(--label-caps, normal);
   letter-spacing: var(--label-tracking);
   line-height: 1.2;
 }
@@ -368,6 +402,7 @@
   font-weight: 450;
   line-height: 1;
   text-transform: var(--label-case);
+  font-variant-caps: var(--label-caps, normal);
   letter-spacing: var(--label-tracking);
   color: var(--muted);
   font-variant-numeric: tabular-nums lining-nums;
@@ -427,14 +462,16 @@
 }
 .layout-content .s-head > h1.s-title,
 .layout-content .s-head > h2.s-title { font-size: calc(var(--step-3) * var(--fs)); }
-.layout-content .s-body { grid-column: 1 / span 8; }
+.layout-content .s-body { grid-column: 1 / -1; --measure: calc(66.667% - var(--gutter) / 3); }
+/* Text keeps an 8-column measure; tables, code, math and charts use the full width */
+.layout-content .s-body > :not(table, pre, section, .s-chart, .s-callout) { max-width: var(--measure); }
+.layout-content .s-lede > * { max-width: none; }
 .layout-content .s-media {
   grid-column: 1 / -1;
   margin-top: 1em;
   height: 40%;
 }
 
-.layout-content .s-body:has(> table) { grid-column: 1 / -1; }
 
 /* Statement -------------------------------------------------------------- */
 .layout-statement .s-inner { align-content: center; }
@@ -470,6 +507,7 @@
   font-family: var(--font-label);
   font-size: calc(var(--label-size) * 1.25);
   text-transform: var(--label-case);
+  font-variant-caps: var(--label-caps, normal);
   letter-spacing: var(--label-tracking);
   color: var(--muted);
 }
@@ -601,6 +639,7 @@
 .s-section > h2,
 .s-section > h3,
 .s-section > h4 {
+  --track-k: 0.4;
   font-size: calc(var(--step-1) * var(--fs));
   line-height: 1.12;
   margin-bottom: 0.5em;
@@ -613,13 +652,20 @@
 .s-section:has(.s-media) { border-top: 0; padding-top: 0; }
 .s-section:has(.s-media)::before { display: none; }
 
-/* Short numeric column heads read as figures */
+/* Short numeric column heads read as figures. They never wrap: fit() sets
+   --fig-k so the widest one fits its column, and all of them share that size. */
 .s-columns.is-figures .s-section > :is(h1, h2, h3, h4, h5, h6) {
-  font-size: calc(var(--step-4) * var(--fs));
+  --track-k: 1;
+  font-size: calc(var(--step-4) * var(--fs) * var(--fig-k, 1));
   line-height: 0.95;
   margin-bottom: 0.25em;
   font-variant-numeric: lining-nums tabular-nums;
+  white-space: nowrap;
 }
+/* The unit or symbol is set smaller, so the number carries the weight */
+.slide .s-unit { font-size: 0.56em; letter-spacing: 0; }
+.slide .s-unit.is-prefix { vertical-align: 0.62em; margin-right: 0.04em; }
+.slide .s-unit.is-suffix { margin-left: 0.04em; }
 
 /* Timeline: columns hung from one hairline, a dot per entry --------------- */
 .layout-timeline .s-columns {
@@ -655,6 +701,7 @@
   line-height: 1.2;
   letter-spacing: var(--label-tracking);
   text-transform: var(--label-case);
+  font-variant-caps: var(--label-caps, normal);
   color: var(--title, var(--fg));
 }
 .layout-timeline .s-section-body { font-size: 0.8em; }
@@ -672,6 +719,7 @@
 .is-portrait .s-intro,
 .is-portrait.layout-content .s-body,
 .is-portrait.layout-gallery .s-body { grid-column: 1 / -1; }
+.is-portrait .s-body { --measure: 100%; }
 .is-portrait.layout-statement .s-body,
 .is-portrait.layout-quote .s-body,
 .is-portrait.layout-section .s-head,
@@ -806,9 +854,18 @@
 .theme-newyork.layout-statement .s-body { font-weight: 820; }
 
 /* Basel: hairline under titles, a single red square */
-.theme-basel.layout-content .s-head,
-.theme-basel.layout-columns .s-head,
-.theme-basel.layout-gallery .s-head { padding-bottom: 0.4em; border-bottom: 1px solid var(--rule); }
+/* Signature: every title sits on a solid band of ink */
+.theme-basel:is(.layout-content, .layout-columns, .layout-gallery, .layout-split, .layout-section) .s-head > .s-title {
+  display: inline;
+  padding: 0.02em 0.22em 0.08em;
+  margin-left: -0.22em;
+  background: var(--title, var(--fg));
+  color: var(--bg);
+  line-height: 1.22;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+.theme-basel:is(.layout-content, .layout-columns, .layout-gallery, .layout-split, .layout-section) .s-head > .s-subtitle { margin-top: 0.7em; }
 .theme-basel.layout-cover .s-inner::before,
 .theme-basel.layout-section .s-head::before { width: calc(var(--step-0) * 1.1); height: calc(var(--step-0) * 1.1); }
 .theme-basel.layout-cover .s-inner::before { grid-column: 1; }
@@ -834,9 +891,6 @@
 .theme-copenhagen.layout-section .s-head::before { width: calc(var(--step-0) * 0.5); height: calc(var(--step-0) * 0.5); border-radius: 50%; }
 .theme-copenhagen.layout-cover .s-inner::before { grid-column: 1; }
 
-/* Vancouver */
-.theme-vancouver .s-subtitle { color: var(--fg); opacity: 0.8; }
-.theme-vancouver .s-section { border-top-width: 2px; border-color: var(--accent); }
 
 /* Tokyo: slide number as a station sign */
 .theme-tokyo .s-slot.is-number {
@@ -880,9 +934,6 @@
 .theme-paris blockquote,
 .theme-garamond blockquote { font-style: italic; }
 
-/* Helvetica: hierarchy through size and weight alone */
-.theme-helvetica .s-subtitle { font-weight: 400; color: var(--fg); }
-.theme-helvetica .s-section { border-top-width: 3px; }
 
 .theme-la.is-portrait.layout-split .s-bleed,
 .theme-la.is-portrait.layout-split.media-first .s-bleed {
@@ -976,8 +1027,7 @@
 
 /* Content: big heading at the top, prose resting on the bottom margin */
 .theme-nothing.layout-content .s-head { grid-column: 1 / span 10; }
-.theme-nothing.layout-content .s-body { grid-column: 1 / span 7; }
-.theme-nothing.layout-content .s-body:has(> table) { grid-column: 1 / -1; }
+.theme-nothing.layout-content .s-body { --measure: calc(58.333% - var(--gutter) * 5 / 12); }
 .theme-nothing.layout-content:not(:has(.s-body > :not(p))) .s-inner {
   grid-template-rows: auto minmax(0, 1fr);
   align-content: stretch;
@@ -990,6 +1040,7 @@
 .theme-nothing.layout-content:has(.s-lede) .s-head { grid-column: 1 / span 5; grid-row: 1; }
 .theme-nothing.layout-content:has(.s-lede) .s-head > .s-title { font-size: calc(var(--step-2) * 1.15 * var(--fs)); }
 .theme-nothing.layout-content:has(.s-lede) .s-body { display: contents; }
+.theme-nothing.layout-content:has(.s-lede) .s-body > * { max-width: none; }
 .theme-nothing.layout-content:has(.s-lede) .s-lede { grid-column: 1 / span 4; grid-row: 2; align-self: end; margin: 0; color: var(--muted); }
 .theme-nothing.layout-content:has(.s-lede) .s-body > :is(ol, ul) { grid-column: 7 / -1; grid-row: 1 / span 2; align-self: start; margin: 0; }
 .theme-nothing.is-portrait.layout-content:has(.s-lede) .s-inner { grid-template-rows: none; align-content: start; }
@@ -1039,7 +1090,7 @@
   margin-bottom: 0.45em;
 }
 .theme-nothing .s-columns.is-figures .s-section > :is(h1, h2, h3, h4, h5, h6) {
-  font-size: calc(var(--step-4) * 1.4 * var(--fs));
+  font-size: calc(var(--step-4) * 1.4 * var(--fs) * var(--fig-k, 1));
   font-weight: 200;
   letter-spacing: -0.05em;
 }
@@ -1085,3 +1136,206 @@
 }
 .theme-nothing.is-portrait.layout-content :is(.s-head, .s-body),
 .theme-nothing.is-portrait.layout-statement .s-body { grid-column: 1 / -1; }
+.theme-nothing.is-portrait.layout-content .s-body { --measure: 100%; }
+
+/* ==========================================================================
+   Signature moves (Oct 2026): one detail per theme that only it has
+   ========================================================================== */
+
+/* Swiss: a big section number on section slides */
+.theme-swiss.layout-section { counter-reset: act var(--section, 1); }
+.theme-swiss.layout-section::after {
+  content: counter(act, decimal-leading-zero);
+  position: absolute;
+  z-index: 0;
+  top: var(--my);
+  right: var(--mx);
+  font-family: var(--font-display);
+  font-size: calc(var(--step-4) * 2.1 * var(--fs));
+  font-weight: var(--display-weight);
+  line-height: 0.8;
+  letter-spacing: -0.05em;
+  font-variant-numeric: lining-nums tabular-nums;
+  color: var(--accent);
+}
+
+/* Editorial: vertical rules between columns, like newspaper columns */
+.theme-editorial:not(.layout-timeline) .s-columns:not(.is-figures) .s-section {
+  border-top: 0;
+  padding-top: 0;
+  padding-left: calc(var(--gutter) * 0.6);
+  border-left: 1px solid var(--rule);
+}
+.theme-editorial:not(.layout-timeline) .s-columns:not(.is-figures) .s-section:first-child { border-left: 0; padding-left: 0; }
+.theme-editorial:not(.layout-timeline) .s-columns:not(.is-figures) .s-section::before { margin-bottom: 0.6em; }
+
+/* Poster: a thick band across the top, and huge numbers on section slides */
+.theme-poster:not(.layout-full, .layout-cover)::before {
+  content: '';
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: calc(var(--step-0) * 0.42);
+  background: var(--accent);
+}
+.theme-poster.layout-section { counter-reset: act var(--section, 1); }
+.theme-poster.layout-section::after {
+  content: counter(act);
+  position: absolute;
+  z-index: 0;
+  right: calc(var(--mx) * 0.6);
+  bottom: calc(var(--my) * -0.5);
+  font-family: var(--font-display);
+  font-size: calc(var(--step-4) * 4 * var(--fs));
+  font-weight: 700;
+  line-height: 0.8;
+  letter-spacing: -0.06em;
+  color: var(--accent);
+  opacity: 0.9;
+}
+
+/* ==========================================================================
+   Callouts: > [!NOTE], [!TIP], [!IMPORTANT], [!WARNING], [!CAUTION]
+   ========================================================================== */
+.slide blockquote.s-callout {
+  --c: var(--accent);
+  padding: 0.75em 1em 0.8em;
+  border-left: calc(var(--step-0) * 0.14) solid var(--c);
+  border-radius: min(var(--radius), 12px);
+  background: color-mix(in srgb, var(--c) 11%, transparent);
+  font-family: var(--font-body);
+  font-size: 0.92em;
+  font-weight: var(--body-weight);
+  font-style: normal;
+  line-height: var(--body-leading);
+  letter-spacing: 0;
+}
+.slide blockquote.s-callout > * + * { margin-top: 0.45em; }
+.slide .s-callout-label {
+  font-family: var(--font-label);
+  font-size: calc(var(--label-size) * 1.15 * var(--fs));
+  font-weight: 600;
+  line-height: 1.2;
+  text-transform: var(--label-case);
+  font-variant-caps: var(--label-caps, normal);
+  letter-spacing: var(--label-tracking);
+  color: var(--c);
+}
+/* Flexoki: 600 on light grounds, 400 on dark */
+.slide blockquote.s-callout-tip { --c: #66800B; }
+.slide blockquote.s-callout-important { --c: #5E409D; }
+.slide blockquote.s-callout-warning { --c: #BC5215; }
+.slide blockquote.s-callout-caution { --c: #AF3029; }
+.appearance-dark blockquote.s-callout-tip { --c: #879A39; }
+.appearance-dark blockquote.s-callout-important { --c: #8B7EC8; }
+.appearance-dark blockquote.s-callout-warning { --c: #DA702C; }
+.appearance-dark blockquote.s-callout-caution { --c: #D14D41; }
+
+/* ==========================================================================
+   Code: Flexoki syntax colors (tok-* classes from highlight.ts) and line focus
+   ========================================================================== */
+.slide pre.s-code {
+  --syn-comment: #878580;
+  --syn-keyword: #66800B;
+  --syn-string: #24837B;
+  --syn-number: #5E409D;
+  --syn-function: #BC5215;
+  --syn-variable: #205EA6;
+  --syn-type: #AD8301;
+  --syn-tag: #AF3029;
+  --syn-punct: #6F6E69;
+}
+.appearance-dark pre.s-code {
+  --syn-comment: #878580;
+  --syn-keyword: #879A39;
+  --syn-string: #3AA99F;
+  --syn-number: #8B7EC8;
+  --syn-function: #DA702C;
+  --syn-variable: #4385BE;
+  --syn-type: #D0A215;
+  --syn-tag: #D14D41;
+  --syn-punct: #9F9D96;
+}
+.slide .tok-comment { color: var(--syn-comment); font-style: italic; }
+.slide .tok-keyword { color: var(--syn-keyword); }
+.slide .tok-string { color: var(--syn-string); }
+.slide .tok-number { color: var(--syn-number); }
+.slide .tok-function { color: var(--syn-function); }
+.slide .tok-variable { color: var(--syn-variable); }
+.slide .tok-type { color: var(--syn-type); }
+.slide .tok-tag { color: var(--syn-tag); }
+.slide .tok-punct { color: var(--syn-punct); }
+/* ```js {2,4}: the listed lines stay, the rest fade back */
+.slide pre.has-focus .s-line.is-dim { opacity: 0.32; }
+.slide pre.has-focus .s-line.is-focus { font-weight: 560; }
+
+/* ==========================================================================
+   // image: contain — show the whole image (logos, diagrams, screenshots)
+   ========================================================================== */
+.img-contain .s-figure { background: transparent; }
+.img-contain .s-figure img { object-fit: contain; }
+
+/* ==========================================================================
+   Charts (// chart: bar | line) — drawn from the slide's table by chart.ts
+   ========================================================================== */
+.s-chart { margin: 0; min-width: 0; }
+.s-chart .c-svg { display: block; width: calc(100% * var(--fit, 1)); height: auto; overflow: visible; }
+.s-chart-caption {
+  margin-bottom: 0.8em;
+  font-family: var(--font-label);
+  font-size: calc(var(--label-size) * 1.1 * var(--fs));
+  text-transform: var(--label-case);
+  font-variant-caps: var(--label-caps, normal);
+  letter-spacing: var(--label-tracking);
+  color: var(--muted);
+}
+.s-chart text {
+  font-family: var(--font-label);
+  font-size: var(--c-label);
+  font-variant-numeric: tabular-nums lining-nums;
+  fill: var(--muted);
+}
+.s-chart .c-value { fill: var(--fg); font-weight: 600; }
+.s-chart .c-cat,
+.s-chart .c-legend { fill: var(--fg); }
+.s-chart .c-grid { stroke: var(--rule); stroke-width: 2; }
+.s-chart .c-grid.is-zero { stroke: var(--muted); }
+.s-chart .c-line { fill: none; stroke-width: 5; stroke-linejoin: round; stroke-linecap: round; }
+.s-chart .c-dot { stroke: var(--bg); stroke-width: 4; }
+/* One series takes the theme's accent; more use Flexoki's validated order */
+.s-chart .c-s0 { --c: var(--accent); }
+.s-chart:has(.c-s1) .c-s0 { --c: #205EA6; }
+.s-chart .c-s1 { --c: #BC5215; }
+.s-chart .c-s2 { --c: #5E409D; }
+.s-chart .c-s3 { --c: #66800B; }
+.appearance-dark .s-chart:has(.c-s1) .c-s0 { --c: #4385BE; }
+.appearance-dark .s-chart .c-s1 { --c: #DA702C; }
+.appearance-dark .s-chart .c-s2 { --c: #8B7EC8; }
+.appearance-dark .s-chart .c-s3 { --c: #879A39; }
+/* On backgrounds that change every slide, fixed hues would clash: use shades of the text color */
+.bg-pattern .s-chart:has(.c-s1) .c-s0 { --c: var(--fg); }
+.bg-pattern .s-chart .c-s1 { --c: color-mix(in oklab, var(--fg) 58%, var(--bg)); }
+.bg-pattern .s-chart .c-s2 { --c: color-mix(in oklab, var(--fg) 34%, var(--bg)); }
+.bg-pattern .s-chart .c-s3 { --c: color-mix(in oklab, var(--fg) 18%, var(--bg)); }
+.s-chart :is(.c-mark, .c-dot, .c-key) { fill: var(--c); }
+.s-chart .c-line { stroke: var(--c); }
+
+/* ==========================================================================
+   Timer (// timer: 5:00) — counts down when presenting
+   ========================================================================== */
+.slide .s-timer {
+  grid-column: 1 / -1;
+  font-family: var(--font-display);
+  font-size: calc(var(--step-4) * 1.9 * var(--fs));
+  font-weight: var(--display-weight);
+  line-height: 0.9;
+  letter-spacing: calc(var(--display-tracking) * 0.5);
+  font-variant-numeric: tabular-nums lining-nums;
+  color: var(--title, var(--fg));
+}
+.s-body > .s-timer { margin-top: 0.3em; }
+.layout-statement .s-body > .s-timer { font-size: calc(var(--step-4) * 1.9 * var(--fs)); }
+.align-center .s-timer { text-align: center; }
+.slide .s-timer.is-done { color: var(--accent); }

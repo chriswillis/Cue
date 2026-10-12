@@ -1,5 +1,6 @@
 import { parse, type ParsedDoc } from './parser';
-import { renderDeck, mount, renderNotes } from './render';
+import { renderDeck, mount, renderNotes, startTimers } from './render';
+import { onHighlighterReady } from './markdown';
 
 /**
  * Presenter view: a second window with your notes as a teleprompter, the
@@ -78,6 +79,10 @@ export function bootPresenter(): void {
   let running = true;
   let elapsed = 0;
   let lastTick = performance.now();
+  let stopTimers: () => void = () => {};
+  // A timer keeps running through edits; it restarts when its slide is shown anew
+  let timerStart = performance.now();
+  let timerIndex = -1;
 
   const notesEl = $('.pv-notes-inner');
   const applyNotesSize = () => notesEl.style.setProperty('--notes-size', `${notesSize}px`);
@@ -88,7 +93,14 @@ export function bootPresenter(): void {
     index = Math.max(0, Math.min(parsed.slides.length - 1, i));
     $('.pv-cur').textContent = String(index + 1);
     $('.pv-of').textContent = `/ ${parsed.slides.length}`;
-    mount($('.pv-current'), slides[index].cloneNode(true) as HTMLElement, parsed.settings);
+    const cur = slides[index].cloneNode(true) as HTMLElement;
+    mount($('.pv-current'), cur, parsed.settings);
+    if (index !== timerIndex) {
+      timerIndex = index;
+      timerStart = performance.now();
+    }
+    stopTimers();
+    stopTimers = startTimers(cur, timerStart);
     const next = slides[index + 1];
     const nextFrame = $('.pv-next');
     if (next) mount(nextFrame, next.cloneNode(true) as HTMLElement, parsed.settings);
@@ -101,6 +113,13 @@ export function bootPresenter(): void {
     $('.pv-notes').scrollTop = 0;
     if (broadcast) ch.postMessage({ type: 'goto', index } satisfies Msg);
   }
+
+  // Syntax colors load on demand: re-render the deck when they arrive
+  onHighlighterReady(() => {
+    if (!parsed) return;
+    slides = renderDeck(parsed.slides, { settings: parsed.settings, deckTitle: parsed.title });
+    show(index);
+  });
 
   ch.onmessage = (e: MessageEvent<Msg>) => {
     const m = e.data;

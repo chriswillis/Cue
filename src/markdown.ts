@@ -11,6 +11,8 @@
  *   | a || b |             a cell merged with the next (MultiMarkdown)
  *   [Caption]              a caption line directly above or below a table
  *   <img src alt title width height>  on its own line, as a safe image
+ *   > [!NOTE] / [!TIP] / [!IMPORTANT] / [!WARNING] / [!CAUTION]   callouts
+ *   ```js {2,4-5}          syntax colors; the listed lines are in focus
  *
  * Raw HTML stays off: shared links can carry anyone's markdown.
  */
@@ -28,6 +30,94 @@ md.use(mark).use(deflist).use(footnote).use(texmath, {
   engine: katex,
   delimiters: ['dollars', 'brackets'],
   katexOptions: { throwOnError: false, output: 'html' },
+});
+
+/* ---------------- code: syntax colors and line focus ---------------- */
+// The highlighter (highlight.ts) loads on demand the first time a slide has
+// code in a known language. Until then code renders plain; when it arrives,
+// whoever registered with onHighlighterReady re-renders.
+type Tokenize = typeof import('./highlight').tokenize;
+let tokenize: Tokenize | null = null;
+let loading: Promise<void> | null = null;
+const readyHooks: (() => void)[] = [];
+
+/** Call fn once syntax colors are available (re-render then). */
+export function onHighlighterReady(fn: () => void): void {
+  readyHooks.push(fn);
+}
+
+function loadHighlighter(): void {
+  if (loading) return;
+  loading = import('./highlight')
+    .then((m) => {
+      tokenize = m.tokenize;
+      readyHooks.forEach((fn) => fn());
+    })
+    .catch(() => {
+      /* offline or blocked: code stays plain */
+    });
+}
+
+/** `{2,4-5}` → the set of 1-based line numbers in focus. */
+function focusLines(attrs: string): Set<number> | null {
+  const m = /\{([\d,\s-]+)\}/.exec(attrs);
+  if (!m) return null;
+  const set = new Set<number>();
+  for (const part of m[1].split(',')) {
+    const [a, b] = part.split('-').map((x) => Number(x.trim()));
+    if (!a) continue;
+    for (let n = a; n <= (b || a) && n < a + 500; n++) set.add(n);
+  }
+  return set.size ? set : null;
+}
+
+md.renderer.rules.fence = (tokens, idx) => {
+  const token = tokens[idx];
+  const info = token.info.trim();
+  const lang = /^[\w+#-]+/.exec(info)?.[0] ?? '';
+  const focus = focusLines(info.slice(lang.length));
+  const code = token.content.replace(/\n$/, '');
+  const esc = md.utils.escapeHtml;
+  if (lang && !tokenize) loadHighlighter();
+  const lines = (lang && tokenize?.(code, lang)) || code.split('\n').map((l) => [[l, '']] as [string, string][]);
+  const body = lines
+    .map((runs, i) => {
+      const html = runs.map(([text, cls]) => (cls ? `<span class="${cls}">${esc(text)}</span>` : esc(text))).join('');
+      const state = focus ? (focus.has(i + 1) ? ' is-focus' : ' is-dim') : '';
+      return `<span class="s-line${state}">${html}</span>`;
+    })
+    .join('\n');
+  const cls = ['s-code', lang && `lang-${esc(lang.toLowerCase())}`, focus && 'has-focus'].filter(Boolean).join(' ');
+  return `<pre class="${cls}"><code>${body}</code></pre>\n`;
+};
+
+/* ---------------- callouts: > [!NOTE] ---------------- */
+const CALLOUTS: Record<string, string> = { note: 'Note', tip: 'Tip', important: 'Important', warning: 'Warning', caution: 'Caution' };
+
+md.core.ruler.after('inline', 'callouts', (state: StateCore) => {
+  const tokens = state.tokens;
+  for (let i = 0; i < tokens.length - 2; i++) {
+    if (tokens[i].type !== 'blockquote_open' || tokens[i + 1].type !== 'paragraph_open') continue;
+    const inline = tokens[i + 2];
+    const m = /^\[!(note|tip|important|warning|caution)\][ \t]*([^\n]*)\n?/i.exec(inline.content);
+    if (!m || inline.type !== 'inline') continue;
+    const kind = m[1].toLowerCase();
+    tokens[i].attrJoin('class', `s-callout s-callout-${kind}`);
+    // The marker (and an optional title after it) become the label
+    const label = new state.Token('html_block', '', 0);
+    label.content = `<p class="s-callout-label">${md.utils.escapeHtml(m[2].trim() || CALLOUTS[kind])}</p>\n`;
+    const rest = inline.content.slice(m[0].length);
+    if (rest.trim()) {
+      const children: Token[] = [];
+      state.md.inline.parse(rest, state.md, state.env, children);
+      inline.content = rest;
+      inline.children = children;
+      tokens.splice(i + 1, 0, label);
+    } else {
+      // The marker was the whole paragraph: replace it with the label
+      tokens.splice(i + 1, 3, label);
+    }
+  }
 });
 
 /* ---------------- footnotes: plain numbers, no back-links ---------------- */

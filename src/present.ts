@@ -1,5 +1,5 @@
 import type { Settings } from './parser';
-import { mountContain } from './render';
+import { mountContain, startTimers } from './render';
 
 /**
  * Fullscreen audience view. Lives in the main window as an overlay so it can
@@ -13,6 +13,8 @@ export class Stage {
   private slides: HTMLElement[] = [];
   private settings!: Settings;
   private hudTimer = 0;
+  /** Stops the countdown on the slide being shown (`// timer:`) */
+  private stopTimers: () => void = () => {};
   index = 0;
   isOpen = false;
   onChange: (index: number) => void = () => {};
@@ -56,6 +58,8 @@ export class Stage {
   }
 
   private wantsFullscreen = false;
+  private timing = false;
+  private timerStart = 0;
 
   open(slides: HTMLElement[], settings: Settings, index: number, fullscreen = true): void {
     this.slides = slides;
@@ -82,7 +86,9 @@ export class Stage {
   close(): void {
     if (!this.isOpen) return;
     this.isOpen = false;
+    this.timing = false;
     this.root.hidden = true;
+    this.stopTimers();
     this.layers.replaceChildren();
     document.documentElement.classList.remove('is-presenting');
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
@@ -99,6 +105,11 @@ export class Stage {
     layer.className = 'stage-layer';
     this.layers.appendChild(layer);
     mountContain(layer, slide, this.settings);
+    // A timer restarts when its slide comes back; an edit while presenting keeps it running
+    if (changed || !this.timing) this.timerStart = performance.now();
+    this.timing = true;
+    this.stopTimers();
+    this.stopTimers = startTimers(slide, this.timerStart);
     const bg = getComputedStyle(slide).getPropertyValue('--bg');
     this.root.style.setProperty('--stage-bg', bg || '#000');
     const old = Array.from(this.layers.children).filter((c) => c !== layer) as HTMLElement[];

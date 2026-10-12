@@ -17,12 +17,16 @@
  *                    each line's slide color (badges.ts)
  *   caretColor       the cursor takes the color of the slide it's in
  *   keymap           Tab puts a line on the slide; Enter keeps the tab going
+ *   overflowField    slides whose text doesn't fit (set by main.ts after
+ *                    rendering); their badge turns amber
+ *   completion       suggestions for front matter, // directives, fences
+ *                    and callouts (complete.ts)
  *
  * The visual rules for those classes live in styles/app.css under
  * "Line roles". To style a new kind of line: give it a role in parser.ts,
  * map the role to a class in ROLE_CLASS, then add CSS for the class.
  */
-import { EditorState, StateField, type Extension, RangeSetBuilder } from '@codemirror/state';
+import { EditorState, StateField, StateEffect, type Extension, RangeSetBuilder } from '@codemirror/state';
 import { EditorView, Decoration, WidgetType, type DecorationSet, keymap, drawSelection, highlightActiveLine, placeholder } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentMore, indentLess, insertNewlineAndIndent } from '@codemirror/commands';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
@@ -30,12 +34,30 @@ import { HighlightStyle, syntaxHighlighting, indentUnit } from '@codemirror/lang
 import { tags as t } from '@lezer/highlight';
 import { parse, type ParsedDoc } from './parser';
 import { slideVars } from './badges';
+import { completion } from './complete';
 
 /** The parsed deck lives in editor state so it's always in sync with the text. */
 export const parsedField = StateField.define<ParsedDoc>({
   create: (state) => parse(state.doc.toString()),
   update: (value, tr) => (tr.docChanged ? parse(tr.state.doc.toString()) : value),
 });
+
+/** Which slides are too full to fit even at the smallest type step. */
+const setOverflow = StateEffect.define<number[]>();
+const overflowField = StateField.define<Set<number>>({
+  create: () => new Set(),
+  update: (value, tr) => {
+    for (const e of tr.effects) if (e.is(setOverflow)) return new Set(e.value);
+    return value;
+  },
+});
+
+/** Tell the editor which slides overflow (main.ts calls this after each render). */
+export function markOverflow(view: EditorView, indices: number[]): void {
+  const now = view.state.field(overflowField);
+  if (now.size === indices.length && indices.every((i) => now.has(i))) return;
+  view.dispatch({ effects: setOverflow.of(indices) });
+}
 
 /** Line role (from parser.ts) → CSS class on that line. */
 const ROLE_CLASS: Record<string, string> = {
@@ -79,6 +101,7 @@ const tabMark = Decoration.replace({ widget: new TabMark() });
 function buildDecorations(state: EditorState): DecorationSet {
   const parsed = state.field(parsedField);
   const active = cursorSlide(state);
+  const over = state.field(overflowField);
   const builder = new RangeSetBuilder<Decoration>();
   const doc = state.doc;
 
@@ -106,7 +129,8 @@ function buildDecorations(state: EditorState): DecorationSet {
     // On-slide lines and badges carry their slide's color (see badges.ts)
     if (ON_SLIDE.has(role) || slide !== undefined) attrs.style = slideVars(parsed.slideOfLine[i - 1] ?? 0, total);
     if (slide !== undefined) {
-      cls += ' cm-l-badge' + (slide === active ? ' is-active' : '');
+      cls += ' cm-l-badge' + (slide === active ? ' is-active' : '') + (over.has(slide) ? ' is-overflow' : '');
+      if (over.has(slide)) attrs.title = 'Too much for one slide';
       attrs['data-slide'] = String(slide + 1);
     }
     attrs.class = cls.trim();
@@ -124,7 +148,7 @@ const caretColor = EditorView.editorAttributes.compute(['selection', parsedField
 const decorationsField = StateField.define<DecorationSet>({
   create: buildDecorations,
   update: (deco, tr) =>
-    tr.docChanged || (tr.selection && cursorSlide(tr.state) !== cursorSlide(tr.startState)) ? buildDecorations(tr.state) : deco,
+    tr.docChanged || tr.effects.some((e) => e.is(setOverflow)) || (tr.selection && cursorSlide(tr.state) !== cursorSlide(tr.startState)) ? buildDecorations(tr.state) : deco,
   provide: (f) => EditorView.decorations.from(f),
 });
 
@@ -170,7 +194,9 @@ export function createEditor(parent: HTMLElement, text: string, hooks: EditorHoo
   let lastSlide = -1;
   const extensions: Extension[] = [
     parsedField,
+    overflowField,
     decorationsField,
+    completion,
     caretColor,
     history(),
     drawSelection(),

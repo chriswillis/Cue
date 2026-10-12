@@ -67,7 +67,7 @@ flowchart TD
   E --> F{"chooseLayout()<br/>or // layout: hint"}
   F --> G["Build DOM<br/>section.slide.theme-x.layout-y"]
   G --> H["applyLook()<br/>colors, fonts, size → CSS variables"]
-  H --> I["fit()<br/>step type down until nothing overflows"]
+  H --> I["fit()<br/>figures, code, step type down,<br/>grow sparse slides, hang punctuation"]
   I --> J["mount() scales the 1920 px slide<br/>to any frame with a CSS transform"]
 ```
 
@@ -98,9 +98,16 @@ flowchart LR
   CSS["styles/slide.css<br/>layouts + per-theme personality"] --> S["What you see"]
 ```
 
-1. **Theme variables.** Each theme compiles to CSS custom properties on `.theme-<id>`: the type steps (`--step-0` … `--step-4`), fonts, margins, label style.
-2. **Per-slide variables.** `applyLook()` writes colors, and any font or size overrides, inline on each slide. That's how patterns that change per slide, gradients and your Design panel overrides work.
-3. **slide.css** uses only variables, so one set of layout rules serves every theme. Theme quirks are added as `.theme-nothing.layout-section …` rules near the bottom.
+1. **Theme variables.** Each theme compiles to CSS custom properties on `.theme-<id>`: the type steps (`--step-0` … `--step-4`), fonts, margins, label style (`--label-case`, `--label-caps`).
+2. **Per-slide variables.** `applyLook()` writes colors, and any font, size or type-control overrides (`contrast`, `leading`, `weight`, `labels`, `numerals`), inline on each slide. That's how patterns that change per slide, gradients and your Design panel overrides work.
+3. **slide.css** uses only variables, so one set of layout rules serves every theme. Theme quirks are added as `.theme-nothing.layout-section …` rules near the bottom, then the signature details of a few themes, then callouts, code colors, charts and timers.
+
+Things to know when editing slide.css:
+
+- **Resets live in `:where()`.** `:where(.slide) :where(p, ul, ol, dl, pre, blockquote) { margin: 0 }` has zero specificity, so the `.s-body > * + *` spacing rules always win. A reset like `.slide p { margin: 0 }` would silently remove the gap between paragraphs.
+- **Tracking scales with size.** Headings use `letter-spacing: calc(var(--display-tracking) * var(--track-k))`, with `--track-k` from 1 (titles, figures) down to 0.2 (h5/h6), and word spacing gives back what the tracking takes.
+- **Lines are 2 px or more** for anything decorative. Slides are shown scaled down (a thumbnail is about a quarter size), so 1 px textures and grids disappear.
+- **`--grow`** (set by fit) multiplies the slide's base font size: body text grows, titles don't, because they're set in explicit steps.
 
 The editor chrome (toolbar, menu, panels) is styled separately in `styles/app.css`.
 
@@ -144,8 +151,12 @@ Before publishing, the workflow runs a **smoke test** (`npm run smoke`, `scripts
 | `src/main.ts` | App shell: boot, render loop, menu, views, saving, deck library, presenter sync. **Start here.** |
 | `src/editor.ts` | CodeMirror setup, line roles, slide colors, badges, ⇥ marks, Tab/Enter keys. |
 | `src/parser.ts` | Text → slides: which lines show, which are notes, front matter → settings. |
-| `src/markdown.ts` | The markdown dialect (markdown-it + highlight, sup/sub, footnotes, math, tasks…). |
-| `src/render.ts` | Slide DOM, autolayout, fit-to-slide, header/footer slots, scaling. |
+| `src/markdown.ts` | The markdown dialect (markdown-it + highlight, sup/sub, footnotes, math, tasks, callouts, code fences…). |
+| `src/highlight.ts` | Syntax colors for code (Lezer parsers). Loaded on demand, only when a deck has code in a known language. |
+| `src/render.ts` | Slide DOM, autolayout, fit-to-slide (shrink, grow, figures, code, hanging punctuation), header/footer slots, timers, scaling. |
+| `src/chart.ts` | `// chart: bar` / `line`: a slide's table drawn as SVG. |
+| `src/complete.ts` | Editor autocomplete: front matter, `//` directives, fence languages, callouts. |
+| `src/guide.ts` | The Markdown guide panel, with examples that insert at the cursor. |
 | `src/themes.ts` | Every theme as data, compiled to CSS variables. |
 | `src/typefaces.ts`, `src/fonts.ts` | Bundled fonts and their best weights. |
 | `src/flexoki.ts` | The Flexoki palette, color patterns and swatches. |
@@ -174,7 +185,13 @@ Before publishing, the workflow runs a **smoke test** (`npm run smoke`, `scripts
 
 **Add a deck setting.** Add it to `Settings` and the defaults in `parser.ts`, read and write it in `toSettings()` and `serializeFrontMatter()`, use it in `render.ts`, and add a control in `inspector.ts`.
 
-**Add markdown syntax.** Add a markdown-it plugin or rule in `markdown.ts`, and style its output in `slide.css`.
+**Add markdown syntax.** Add a markdown-it plugin or rule in `markdown.ts`, and style its output in `slide.css`. Add an example to `guide.ts`, and a suggestion to `complete.ts` if it has something to remember.
+
+**Add a slide directive** (like `// timer:`). Add a regex next to `RE_LAYOUT` in `parser.ts`, store it on `SlideSource`, use it in `renderSlide()`, and add it to the slide cache keys in `main.ts` (`keyFor`) and `inspector.ts` (`syncThumbs`), or edits to it won't re-render.
+
+**Add a code language.** `npm install @lezer/<language>`, then add its fence names to `PARSERS` in `highlight.ts`.
+
+**Retire a theme.** Remove its `define()` and add it to `THEME_ALIASES` in `themes.ts` with the theme and fonts that replace it, so old decks keep their look.
 
 ## Debugging
 

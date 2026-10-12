@@ -1,8 +1,9 @@
 import { md, prepare } from './markdown';
 import { SIZE_SCALE, type Settings, type SlideSource } from './parser';
-import { getTheme, type Palette } from './themes';
+import { getTheme, stepVars, labelVars, type Palette } from './themes';
 import { getTypeface } from './typefaces';
 import { resolveColor } from './flexoki';
+import { chartSVG } from './chart';
 
 /**
  * Slide rendering + autolayout.
@@ -144,9 +145,63 @@ function extractLabels(blocks: Block[]): { blocks: Block[]; foot: HTMLElement[] 
 /** A block's elements, with its kicker first. */
 const withKicker = (b: Block): HTMLElement[] => (b.kicker ? [b.kicker, b.el] : [b.el]);
 
+/**
+ * Big figures: set the unit or symbol smaller than the number, so "$4.2M"
+ * reads as a number with a unit. Only plain-text heads are touched.
+ */
+function splitUnits(h: HTMLElement): void {
+  if (h.children.length) return;
+  // Letters before the number (Q1, H2) are part of the label, not a unit
+  const m = /^([^\p{L}\d\s.,-]*)(-?[\d.,]*\d)(\D*)$/u.exec(h.textContent?.trim() ?? '');
+  if (!m || (!m[1] && !m[3])) return;
+  const unit = (text: string, cls: string) => {
+    const span = document.createElement('span');
+    span.className = `s-unit ${cls}`;
+    span.textContent = text;
+    return span;
+  };
+  h.replaceChildren(...[m[1] && unit(m[1], 'is-prefix'), m[2], m[3] && unit(m[3], 'is-suffix')].filter((x): x is string | HTMLElement => !!x));
+}
+
+/** Opening punctuation that should hang in the margin. */
+const HANGING = /^[“‘"'«„(\[]/;
+
+/**
+ * Hanging punctuation: a leading quote or bracket goes in a span that fit()
+ * pulls left by its own width, so the letters line up with the margin.
+ */
+function markHanging(root: HTMLElement): void {
+  root.querySelectorAll<HTMLElement>('h1, h2, h3, h4, .s-body > p, .s-section-body > p, .s-intro > p').forEach((e) => {
+    if (e.closest('blockquote, .s-footnotes')) return;
+    const walker = document.createTreeWalker(e, NodeFilter.SHOW_TEXT);
+    let node = walker.nextNode() as Text | null;
+    while (node && !node.data.trim()) node = walker.nextNode() as Text | null;
+    if (!node || !HANGING.test(node.data.trimStart())) return;
+    // Only when the punctuation really starts the line
+    if (node.data !== node.data.trimStart() || node.parentElement?.closest('sup, sub, code')) return;
+    const span = document.createElement('span');
+    span.className = 's-hang';
+    span.textContent = node.data[0];
+    node.data = node.data.slice(1);
+    node.parentNode!.insertBefore(span, node);
+  });
+}
+
+/** `photo.jpg#bottom`, `#top-left` or `#30,70` (percent): where a cropped image is anchored. */
+function focalPoint(src: string): string {
+  const hash = /#([\w,.%-]+)$/.exec(src)?.[1]?.toLowerCase();
+  if (!hash) return '';
+  const pct = /^(\d{1,3})%?,(\d{1,3})%?$/.exec(hash);
+  if (pct) return `${Math.min(100, +pct[1])}% ${Math.min(100, +pct[2])}%`;
+  const words = hash.split('-').filter((w) => ['top', 'bottom', 'left', 'right', 'center'].includes(w));
+  return words.length && words.length === hash.split('-').length ? words.join(' ') : '';
+}
+
 function wrapImage(img: HTMLImageElement): HTMLElement {
   const fig = document.createElement('figure');
   fig.className = 's-figure';
+  const focus = focalPoint(img.getAttribute('src') ?? '');
+  if (focus) img.style.objectPosition = focus;
   img.loading = 'eager';
   img.decoding = 'async';
   img.draggable = false;
@@ -246,7 +301,8 @@ function chooseLayout(a: Analysis, hint: string | undefined, index: number): Lay
   if (nImg >= 1) return 'split';
   if (!hasTitle) {
     const only = a.text.length === 1 ? a.text[0] : null;
-    if (only?.tagName === 'BLOCKQUOTE' || (a.text.length === 2 && a.text[0].tagName === 'BLOCKQUOTE')) return 'quote';
+    const quote = (e?: HTMLElement) => e?.tagName === 'BLOCKQUOTE' && !e.classList.contains('s-callout');
+    if (quote(only ?? undefined) || (a.text.length === 2 && quote(a.text[0]))) return 'quote';
     if (textLength(a.text) < 180 && a.text.every((e) => e.tagName === 'P')) return 'statement';
   }
   return 'content';
@@ -271,7 +327,9 @@ export function renderSlide(src: SlideSource, opts: RenderOptions): HTMLElement 
   const html = md.render(prepare(src.visibleMd));
   const { blocks, foot } = extractLabels(toBlocks(html));
   const a = analyze(blocks);
-  const layout = chooseLayout(a, src.layoutHint, src.index);
+  let layout = chooseLayout(a, src.layoutHint, src.index);
+  // A timer alone is a statement-sized countdown
+  if (src.timer && layout === 'blank') layout = 'statement';
   const portrait = size.h > size.w;
 
   // `// dark`, `// light` or `// invert` flips this one slide
@@ -288,7 +346,8 @@ export function renderSlide(src: SlideSource, opts: RenderOptions): HTMLElement 
     layout === 'timeline' && 'layout-columns',
     portrait && 'is-portrait',
     a.imageFirst && 'media-first',
-    theme.titleAlign === 'center' && 'align-center',
+    src.imageFit === 'contain' && 'img-contain',
+    (settings.align ?? theme.titleAlign) === 'center' && 'align-center',
     theme.headlineScale === 'uniform' && 'scale-uniform',
   ].filter(Boolean);
   const slide = el('section', classes.join(' '));
@@ -317,7 +376,10 @@ export function renderSlide(src: SlideSource, opts: RenderOptions): HTMLElement 
       const cols = el('div', `s-columns n-${Math.min(n, 6)}`);
       // Short numeric heads (0, 42%, $3M) read as figures: set them big
       const figure = (t: string) => t.length <= 6 && /\d/.test(t) && !/\s/.test(t);
-      if (layout === 'columns' && a.sections.every((s) => figure(s.head?.textContent?.trim() ?? ''))) cols.classList.add('is-figures');
+      if (layout === 'columns' && a.sections.every((s) => figure(s.head?.textContent?.trim() ?? ''))) {
+        cols.classList.add('is-figures');
+        a.sections.forEach((s) => s.head && splitUnits(s.head));
+      }
       a.sections.forEach((s) => {
         const sec = el('div', 's-section', [media(s.images), s.kicker, s.head, el('div', 's-section-body', s.body)]);
         cols.appendChild(sec);
@@ -368,12 +430,23 @@ export function renderSlide(src: SlideSource, opts: RenderOptions): HTMLElement 
     }
   }
 
+  if (src.chart) drawChart(inner, src.chart, size.w - theme.margin[0] * 2, Math.round(size.h * (portrait ? 0.34 : 0.5)), Math.round(Math.max(22, theme.base * 0.6)));
+  if (src.timer) {
+    const t = el('div', 's-timer');
+    t.dataset.seconds = String(src.timer);
+    t.textContent = formatTimer(src.timer);
+    (inner.querySelector('.s-body') ?? inner).appendChild(t);
+    slide.classList.add('has-timer');
+  }
+
   if (foot.length) {
     const target = slide.querySelector<HTMLElement>('.s-text, .s-overlay') ?? inner;
     target.appendChild(el('footer', 's-footnotes', foot));
   }
 
   if (layout === 'statement' && textLength(a.text) <= 64) slide.classList.add('is-short');
+
+  markHanging(inner);
 
   // Quote attribution: a trailing paragraph starting with a dash
   if (layout === 'quote') {
@@ -382,7 +455,7 @@ export function renderSlide(src: SlideSource, opts: RenderOptions): HTMLElement 
   }
 
   if (layout !== 'cover' && layout !== 'full') {
-    const ctx = { title: opts.deckTitle, index: src.index, total: opts.total };
+    const ctx = { title: settings.short || opts.deckTitle, index: src.index, total: opts.total };
     const header = chrome('s-header', settings.header ?? theme.header, ctx);
     const footer = chrome('s-foot', settings.footer ?? theme.footer, ctx);
     if (header) slide.appendChild(header);
@@ -396,6 +469,54 @@ export function renderSlide(src: SlideSource, opts: RenderOptions): HTMLElement 
   });
 
   return slide;
+}
+
+/** The first table on the slide becomes a chart; its caption stays above it. */
+function drawChart(inner: HTMLElement, kind: 'bar' | 'line', width: number, height: number, label: number): void {
+  const table = inner.querySelector('table');
+  if (!table) return;
+  const svg = chartSVG(table, kind, width, height, label);
+  if (!svg) return;
+  const fig = el('figure', `s-chart is-${kind}`);
+  const caption = table.querySelector('caption')?.textContent?.trim();
+  if (caption) {
+    const cap = el('figcaption', 's-chart-caption');
+    cap.textContent = caption;
+    fig.appendChild(cap);
+  }
+  const tpl = document.createElement('template');
+  tpl.innerHTML = svg;
+  fig.appendChild(tpl.content);
+  table.replaceWith(fig);
+}
+
+/** 300 → "5:00" */
+export function formatTimer(seconds: number): string {
+  const s = Math.max(0, Math.ceil(seconds));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const ss = String(s % 60).padStart(2, '0');
+  return h ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`;
+}
+
+/**
+ * Run the countdown on a slide that is being shown (fullscreen or presenter
+ * window). `start` lets a re-rendered slide carry on where it was.
+ * Returns a function that stops it.
+ */
+export function startTimers(slide: HTMLElement, start = performance.now()): () => void {
+  const timers = Array.from(slide.querySelectorAll<HTMLElement>('.s-timer'));
+  if (!timers.length) return () => {};
+  const tick = () => {
+    for (const t of timers) {
+      const left = Number(t.dataset.seconds) - (performance.now() - start) / 1000;
+      t.textContent = formatTimer(left);
+      t.classList.toggle('is-done', left <= 0);
+    }
+  };
+  tick();
+  const id = window.setInterval(tick, 250);
+  return () => clearInterval(id);
 }
 
 /* ------------------------------------------------------------------ */
@@ -418,6 +539,8 @@ function applyLook(slide: HTMLElement, settings: Settings, index: number): void 
     surface: base.surface,
   };
   const st = slide.style;
+  // Backgrounds that change color every slide: charts switch to shades of the text color
+  slide.classList.toggle('bg-pattern', values.bg.startsWith('pattern:'));
   for (const [k, v] of Object.entries(values)) {
     const { color, image } = resolveColor(v, index);
     st.setProperty(`--${k}`, color);
@@ -436,6 +559,34 @@ function applyLook(slide: HTMLElement, settings: Settings, index: number): void 
     st.setProperty('--body-weight', String(bf.bodyWeight));
   }
   st.setProperty('--size-k', String(SIZE_SCALE[settings.size] ?? 1));
+
+  // Type controls (front matter: contrast, leading, weight, labels, numerals)
+  const setVars = (vars: string[]) => vars.forEach((v) => {
+    const i = v.indexOf(':');
+    st.setProperty(v.slice(0, i), v.slice(i + 1));
+  });
+  if (settings.contrast && settings.contrast !== 'standard') {
+    const k = settings.contrast === 'subtle' ? 0.7 : 1.3;
+    setVars(stepVars(theme, 1 + (theme.ratio - 1) * k));
+  }
+  if (settings.leading && settings.leading !== 'normal') {
+    const lead = theme.bodyLeading + (settings.leading === 'tight' ? -0.12 : 0.14);
+    st.setProperty('--body-leading', String(Math.max(1.15, Math.round(lead * 100) / 100)));
+  }
+  if (settings.weight) {
+    const face = getTypeface(settings.titleFont ?? theme.display);
+    const [lo, hi] = face?.weights ?? [100, 900];
+    const want = { light: 300, regular: 430, bold: 720 }[settings.weight];
+    st.setProperty('--display-weight', String(Math.min(hi, Math.max(lo, want))));
+  }
+  if (settings.labels) {
+    setVars(labelVars(settings.labels === 'caps' ? 'uppercase' : settings.labels === 'small-caps' ? 'small-caps' : 'none'));
+    if (settings.labels === 'normal') st.setProperty('--label-tracking', '0.01em');
+    else if (theme.labelCase === 'none') st.setProperty('--label-tracking', '0.08em');
+  }
+  if (settings.numerals) {
+    st.setProperty('--numerals', settings.numerals === 'oldstyle' ? 'oldstyle-nums proportional-nums' : 'lining-nums proportional-nums');
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -499,11 +650,119 @@ function host(): HTMLElement {
 export function fit(slide: HTMLElement): void {
   const h = host();
   h.appendChild(slide);
-  for (const step of FIT_STEPS) {
+  slide.style.setProperty('--fit', '1');
+  fitFigures(slide);
+  fitCode(slide);
+  let step = 1;
+  for (step of FIT_STEPS) {
     slide.style.setProperty('--fit', String(step));
     if (!overflows(slide)) break;
   }
+  if (step === 1) grow(slide);
+  // Still too much at the smallest step: the editor and strip flag it
+  if (overflows(slide)) slide.dataset.overflow = '1';
+  else delete slide.dataset.overflow;
+  hang(slide);
+  trimSlots(slide);
   h.removeChild(slide);
+}
+
+/** Layouts whose body text may grow when the slide is mostly empty. */
+const GROWS = new Set(['content', 'columns', 'split']);
+const GROW_STEPS = [1.24, 1.16, 1.08];
+
+/** How much of the text area the content fills, 0..1. */
+function fill(slide: HTMLElement): number {
+  const inner = slide.querySelector<HTMLElement>('.s-inner');
+  if (!inner) return 1;
+  const cs = getComputedStyle(inner);
+  const pt = parseFloat(cs.paddingTop);
+  const avail = inner.clientHeight - pt - parseFloat(cs.paddingBottom);
+  let top = Infinity;
+  let bottom = 0;
+  // offsetTop is relative to .s-inner, the nearest positioned ancestor
+  const measure = (e: HTMLElement) => {
+    top = Math.min(top, e.offsetTop);
+    bottom = Math.max(bottom, e.offsetTop + e.offsetHeight);
+  };
+  for (const child of Array.from(inner.children) as HTMLElement[]) {
+    // Columns stretch to the bottom of the slide: measure the sections inside
+    if (child.classList.contains('s-columns')) (Array.from(child.children) as HTMLElement[]).forEach(measure);
+    else measure(child);
+  }
+  return avail > 0 && top < Infinity ? (bottom - top) / avail : 1;
+}
+
+/**
+ * Sparse slides: when the content uses less than half the height, body text
+ * steps up (titles stay put, so they match from slide to slide).
+ */
+function grow(slide: HTMLElement): void {
+  slide.style.removeProperty('--grow');
+  if (!GROWS.has(slide.dataset.layout ?? '') || slide.querySelector('.is-figures, .s-chart, .s-timer') || fill(slide) > 0.5) return;
+  for (const g of GROW_STEPS) {
+    slide.style.setProperty('--grow', String(g));
+    fitCode(slide);
+    if (!overflows(slide) && fill(slide) <= 0.8) return;
+  }
+  slide.style.removeProperty('--grow');
+  fitCode(slide);
+}
+
+/** All big figures on a slide share one size: the largest at which the widest fits. */
+function fitFigures(slide: HTMLElement): void {
+  const heads = slide.querySelectorAll<HTMLElement>('.is-figures .s-section > :is(h1, h2, h3, h4, h5, h6)');
+  if (!heads.length) return;
+  const cols = heads[0].closest<HTMLElement>('.s-columns')!;
+  cols.style.removeProperty('--fig-k');
+  let k = 1;
+  heads.forEach((e) => {
+    if (e.scrollWidth > e.clientWidth + 1) k = Math.min(k, e.clientWidth / e.scrollWidth);
+  });
+  if (k < 1) cols.style.setProperty('--fig-k', (k * 0.98).toFixed(3));
+}
+
+/** Code shrinks (to 60%) to keep its lines whole; past that it wraps. */
+function fitCode(slide: HTMLElement): void {
+  slide.querySelectorAll<HTMLElement>('pre').forEach((pre) => {
+    pre.style.removeProperty('--code-k');
+    pre.classList.remove('is-wrapped');
+    const ratio = pre.clientWidth && pre.scrollWidth > pre.clientWidth + 1 ? (pre.clientWidth - 2) / pre.scrollWidth : 1;
+    if (ratio >= 1) return;
+    // The padding doesn't shrink with the text, so aim a little lower
+    const k = Math.max(0.6, ratio * 0.96);
+    pre.style.setProperty('--code-k', k.toFixed(3));
+    if (pre.scrollWidth > pre.clientWidth + 1) pre.classList.add('is-wrapped');
+  });
+}
+
+/** Pull each hanging mark left by its own width (in em, so it scales). */
+function hang(slide: HTMLElement): void {
+  slide.querySelectorAll<HTMLElement>('.s-hang').forEach((s) => {
+    const parent = s.parentElement!;
+    if (getComputedStyle(parent.closest('h1, h2, h3, h4, p, li') ?? parent).textAlign === 'center') {
+      s.style.marginLeft = '';
+      return;
+    }
+    const size = parseFloat(getComputedStyle(s).fontSize) || 1;
+    s.style.marginLeft = `${(-s.getBoundingClientRect().width / size).toFixed(3)}em`;
+  });
+}
+
+/** Header and footer text that doesn't fit is cut at the last whole word. */
+function trimSlots(slide: HTMLElement): void {
+  slide.querySelectorAll<HTMLElement>('.s-slot').forEach((slot) => {
+    const full = slot.dataset.full ?? slot.textContent ?? '';
+    slot.dataset.full = full;
+    slot.textContent = full;
+    if (slot.scrollWidth <= slot.clientWidth + 1) return;
+    const words = full.split(/\s+/);
+    while (words.length > 1) {
+      words.pop();
+      slot.textContent = `${words.join(' ').replace(/[\s,;:.–—-]+$/, '')}…`;
+      if (slot.scrollWidth <= slot.clientWidth + 1) return;
+    }
+  });
 }
 
 export function renderDeck(slides: SlideSource[], opts: Omit<RenderOptions, 'total'>): HTMLElement[] {

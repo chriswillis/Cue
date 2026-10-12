@@ -1,4 +1,4 @@
-import type { ColorPair, Settings, SlideSource } from './parser';
+import { TYPE_OPTIONS, type ColorPair, type Settings, type SlideSource, type TypeKey } from './parser';
 import { renderSlide, fit, mount, LAYOUTS, SLOT_PRESETS, fillSlot } from './render';
 import { THEMES, THEME_GROUPS, getTheme } from './themes';
 import { TYPEFACES, getTypeface } from './typefaces';
@@ -29,10 +29,35 @@ export interface InspectorHost {
 
 type ColorKey = 'titleColor' | 'bodyColor' | 'background';
 
+/** Every type control back to the theme's choice. */
+const RESET_TYPE: Partial<Settings> = { contrast: null, leading: null, weight: null, align: null, labels: null, numerals: null };
+
 const BG_PATTERNS = ['vivid', 'bright', 'pastel', 'muted', 'jewel', 'tint', 'metro', 'metro-light', 'alt-night', 'alt-day'];
 const TEXT_PATTERNS = ['titles-light', 'titles-dark', 'metro-ink'];
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+/** Type controls: label, and the button text for each value. '' = the theme's choice. */
+const TYPE_ROWS: { key: TypeKey; label: string; names: Record<string, string>; themeButton?: boolean }[] = [
+  { key: 'contrast', label: 'Contrast', names: { subtle: 'Subtle', standard: 'Standard', dramatic: 'Dramatic' } },
+  { key: 'weight', label: 'Title weight', names: { '': 'Theme', light: 'Light', regular: 'Regular', bold: 'Bold' }, themeButton: true },
+  { key: 'leading', label: 'Line spacing', names: { tight: 'Tight', normal: 'Normal', loose: 'Loose' } },
+  { key: 'align', label: 'Titles', names: { start: 'Left', center: 'Center' } },
+  { key: 'labels', label: 'Labels', names: { caps: 'Caps', 'small-caps': 'Small caps', normal: 'Plain' } },
+  { key: 'numerals', label: 'Numbers', names: { lining: 'Lining', oldstyle: 'Old style' } },
+];
+
+/** What a type control shows when the deck leaves it to the theme. */
+function typeDefault(key: TypeKey, theme: ReturnType<typeof getTheme>): string {
+  switch (key) {
+    case 'contrast': return 'standard';
+    case 'leading': return 'normal';
+    case 'weight': return '';
+    case 'align': return theme.titleAlign;
+    case 'labels': return theme.labelCase === 'uppercase' ? 'caps' : theme.labelCase === 'small-caps' ? 'small-caps' : 'normal';
+    case 'numerals': return theme.numerals;
+  }
+}
 const esc = (s: string) => s.replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]!);
 
 export function inspectorHTML(): string {
@@ -76,6 +101,15 @@ export function inspectorHTML(): string {
       </section>
 
       <section class="ins-group" data-pane="style">
+        <div class="ins-label ins-label-row">Type <button class="ins-link" data-act="reset-type">Reset</button></div>
+        ${TYPE_ROWS.map(
+          (r) => `<div class="ins-row"><span class="ins-row-label">${r.label}</span>
+          <div class="seg full seg-small">${(r.themeButton ? [''] : []).concat(TYPE_OPTIONS[r.key] as readonly string[]).map((v) => `<button data-type="${r.key}" data-value="${v}">${r.names[v]}</button>`).join('')}</div>
+        </div>`,
+        ).join('')}
+      </section>
+
+      <section class="ins-group" data-pane="style">
         <div class="ins-label">Colors</div>
         <div class="ins-row"><span class="ins-row-label">Appearance</span>
           <div class="seg full"><button data-appearance="light">Light</button><button data-appearance="dark">Dark</button></div>
@@ -101,6 +135,7 @@ export function inspectorHTML(): string {
           </select>
           <input class="ins-input hf-text" type="text" placeholder="Text, or {title} {number} {count} {date}" />
         </div>
+        <label class="ins-row"><span class="ins-row-label">Short title</span><input class="ins-input short-title" type="text" placeholder="Used for {title}" maxlength="80" /></label>
       </section>
 
       <section class="ins-group" data-pane="style">
@@ -118,28 +153,10 @@ export function inspectorHTML(): string {
         <p class="ins-hint">Auto picks a layout from your content. Choosing one adds a <code>// layout:</code> line to the slide.</p>
       </section>
 
-      <section class="ins-group syntax" data-pane="slide">
-        <div class="ins-label">Markdown guide</div>
-        <dl>
-          <dt><code>---</code></dt><dd>Start a new slide</dd>
-          <dt><code># Title</code></dt><dd>Headings always show on the slide</dd>
-          <dt><code>⇥ Text</code></dt><dd>Press Tab at the start of a line to show it on the slide</dd>
-          <dt><code>Text</code></dt><dd>Lines without a tab are speaker notes</dd>
-          <dt><code>![](url)</code></dt><dd>Images on their own line become content blocks</dd>
-          <dt><code>### A</code> <code>### B</code></dt><dd>Repeated subheadings become columns</dd>
-          <dt><code>#### Act one</code> <code>## Title</code></dt><dd>A heading right above a bigger one becomes a small label</dd>
-          <dt><code>###### Note</code></dt><dd>At the end of a slide: a footnote</dd>
-          <dt><code>// dark</code></dt><dd>Show this slide dark (or <code>// light</code>, <code>// invert</code>)</dd>
-          <dt><code>// note</code></dt><dd>Comment, hidden everywhere</dd>
-          <dt>Colors</dt><dd>Slide text warms up from blue to gold as the deck goes on, so you can tell where you are. Only you see them.</dd>
-          <dt><code>⇥ &gt; Quote</code></dt><dd>A quote alone gets the quote layout</dd>
-          <dt><code>==text==</code></dt><dd>Highlight</dd>
-          <dt><code>m^2</code> <code>H~2~O</code></dt><dd>Superscript and subscript</dd>
-          <dt><code>- [ ]</code> <code>- [x]</code></dt><dd>Task list</dd>
-          <dt><code>Term</code> <code>: Definition</code></dt><dd>Definition list</dd>
-          <dt><code>[^Note]</code></dt><dd>Footnote, shown at the bottom of the slide</dd>
-          <dt><code>$x^2$</code> <code>$$…$$</code></dt><dd>Math</dd>
-        </dl>
+      <section class="ins-group" data-pane="slide">
+        <div class="ins-label">Markdown</div>
+        <p class="ins-hint">Every layout, directive and feature, with examples you can insert.</p>
+        <button class="ins-btn" data-act="help">Open the Markdown guide</button>
       </section>
     </div>
     <div class="color-pop" hidden role="dialog" aria-label="Choose a color"></div>`;
@@ -210,6 +227,13 @@ export class Inspector {
       sel.value = s[key] ?? '';
     });
     this.pressed('[data-size]', (b) => b.dataset.size === s.size);
+    this.pressed('[data-type]', (b) => {
+      const key = b.dataset.type as TypeKey;
+      return b.dataset.value === (s[key] ?? typeDefault(key, theme));
+    });
+    const short = q<HTMLInputElement>('.short-title');
+    if (document.activeElement !== short) short.value = s.short ?? '';
+    short.placeholder = this.host.deckTitle() || 'Used for {title}';
 
     // Colors
     this.pressed('[data-appearance]', (b) => b.dataset.appearance === s.appearance);
@@ -250,12 +274,12 @@ export class Inspector {
   /** Theme thumbnails show the current slide in each theme's own defaults. */
   private syncThumbs(s: Settings): void {
     const src = this.host.slide();
-    const key = JSON.stringify([src.visibleMd, src.layoutHint, src.index, s.aspect, this.host.deckTitle()]);
+    const key = JSON.stringify([src.visibleMd, src.layoutHint, src.imageFit, src.chart, src.timer, src.index, s.aspect, s.short, this.host.deckTitle()]);
     if (key === this.thumbKey) return;
     this.thumbKey = key;
     this.root.querySelectorAll<HTMLElement>('.theme-tile').forEach((tile) => {
       const t = getTheme(tile.dataset.theme!);
-      const settings: Settings = { ...s, theme: t.id, appearance: t.defaultAppearance, titleFont: null, bodyFont: null, size: 'M', titleColor: [null, null], bodyColor: [null, null], background: [null, null], header: null, footer: null };
+      const settings: Settings = { ...s, ...RESET_TYPE, theme: t.id, appearance: t.defaultAppearance, titleFont: null, bodyFont: null, size: 'M', titleColor: [null, null], bodyColor: [null, null], background: [null, null], header: null, footer: null };
       const node = renderSlide(src, { settings, deckTitle: this.host.deckTitle(), total: this.host.total() });
       fit(node);
       mount(tile.querySelector('.frame')!, node, settings);
@@ -289,7 +313,14 @@ export class Inspector {
       this.showTab(btn.dataset.tab);
     } else if (btn.classList.contains('theme-tile')) {
       const theme = getTheme(btn.dataset.theme!);
-      this.host.update({ theme: theme.id, appearance: theme.defaultAppearance, titleFont: null, bodyFont: null, titleColor: [null, null], bodyColor: [null, null], background: [null, null] });
+      this.host.update({ ...RESET_TYPE, theme: theme.id, appearance: theme.defaultAppearance, titleFont: null, bodyFont: null, titleColor: [null, null], bodyColor: [null, null], background: [null, null] });
+    } else if (btn.dataset.type) {
+      const key = btn.dataset.type as TypeKey;
+      const value = btn.dataset.value ?? '';
+      const theme = getTheme(this.host.settings().theme);
+      this.host.update({ [key]: value === typeDefault(key, theme) ? null : value } as Partial<Settings>);
+    } else if (btn.dataset.act === 'reset-type') {
+      this.host.update(RESET_TYPE);
     } else if (btn.dataset.size) {
       this.host.update({ size: btn.dataset.size as Settings['size'] });
     } else if (btn.dataset.appearance) {
@@ -337,6 +368,7 @@ export class Inspector {
   private onInput(e: Event): void {
     const t = e.target as HTMLElement;
     if (t.matches('.hf-text')) this.setSlot((t as HTMLInputElement).value);
+    if (t.matches('.short-title')) this.host.update({ short: (t as HTMLInputElement).value.trim() || null });
   }
 
   private setSlot(value: string): void {

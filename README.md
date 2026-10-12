@@ -27,6 +27,11 @@ npm run build      # static site in dist/, deploy anywhere
 | `// anything` | A comment, hidden everywhere |
 | `// layout: split` | Overrides the automatic layout |
 | `// dark`, `// light`, `// invert` | Shows this one slide in the other appearance |
+| `// image: contain` | Shows whole images (logos, diagrams) instead of cropping them |
+| `// chart: bar` or `// chart: line` | Draws the slide's table as a chart |
+| `// timer: 5:00` | A countdown that runs while you present |
+
+The **Markdown guide** (the ? button) has an example of each; click one to insert it. The editor suggests front matter keys and values, `//` directives, code languages and callout types as you type. A slide with too much to fit gets an orange ring on its number.
 
 In the editor, everything the audience will see is written in its slide's color, and tab-indented lines show a faint ⇥. Notes are plain ink and `//` comments are grey.
 
@@ -46,6 +51,13 @@ Everything in [iA Presenter's Markdown guide](https://ia.net/presenter/support/b
 - Math with KaTeX: `$x+y^2$`, `\(x\)` or `\\(x\\)` inline; `$$…$$`, `\[…\]` or `\\[…\\]` for display
 - `<img src="…" alt="…">` on its own line is treated as an image. Other HTML is ignored, which keeps shared links safe to open.
 
+Cue adds:
+
+- Callouts: `> [!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]` and `[!CAUTION]`, with an optional title after the marker
+- Code with syntax colors (js, ts, jsx, python, css, html, json, rust, go, java, c, cpp, yaml) and line focus: ` ```js {2,4-5} ` keeps those lines bright and fades the rest
+- Image captions from the title, `![Tide](tide.jpg "Low tide")`, and a focal point for cropped images: `tide.jpg#bottom`, `#top-left` or `#30,70` (percent)
+- In big-figure columns, units and symbols are set smaller than the number (`$4.2M`, `118%`)
+
 In Cue, list markers `-`, `+` and `*` follow standard Markdown: changing the marker starts a new list.
 
 ### Layouts (chosen automatically)
@@ -61,22 +73,21 @@ In Cue, list markers `-`, `+` and `*` follow standard Markdown: changing the mar
 - **columns**: two or more subheadings of the same level. When every column head is a short number (`### 0`, `### 42%`), they're set as big figures.
 - **timeline** (`// layout: timeline`): the columns hang from one horizontal line, with a dot for each entry. Use dates as the subheadings.
 
-Long content steps the type scale down until it fits.
+Long content steps the type scale down until it fits. Sparse content steps the body text up a little, so a short slide doesn't sit in the top third. Titles keep their size either way.
 
 ### Themes
 
-Eighteen themes in eight groups, all in Flexoki colors, each with light and dark versions:
+Sixteen themes in five groups, by how they feel, all in Flexoki colors, each with light and dark versions:
 
-- **Opinionated:** New York, Basel
-- **Vibrant:** San Francisco, LA
-- **Pastels:** Copenhagen, Vancouver
-- **Colorful:** Tokyo, Milano
-- **Classics:** Zurich, Paris
-- **Typographic:** Helvetica, Garamond
-- **Originals:** Swiss, Editorial, Plex, Poster, Quiet
-- **Minimal:** Nothing
+- **Plain:** Swiss, Zurich, Plex
+- **Book:** Garamond, Editorial, Paris, Basel
+- **Loud:** New York, Poster, San Francisco
+- **Color:** LA, Tokyo, Milano
+- **Quiet:** Quiet, Copenhagen, Nothing
 
-The first twelve are interpretations of iA Presenter's built-in themes. Some change the background on every slide (LA, Vancouver, Milano), use gradients (Tokyo), alternate between two colors (Paris), color each title differently (San Francisco) or use one headline size throughout (Zurich).
+Several are interpretations of iA Presenter's built-in themes. Some change the background on every slide (LA, Milano), use gradients (Tokyo), alternate between two colors (Paris), color each title differently (San Francisco) or use one headline size throughout (Zurich). Some have a detail of their own: Swiss sets a big number on section slides, Editorial rules its columns and dates its slides, Poster runs a band across the top and sets huge section numbers, and Basel sets titles on a band of ink.
+
+Vancouver and Helvetica were folded into LA and Swiss. Decks that use them still open with the same fonts.
 
 **Nothing** is minimalism at museum-placard rigor: a bone ground, thin Hanken Grotesk at dramatically varied scale, uppercase mono field notes (kickers, subtitles, footnotes), hairline structure and one hollow circle as the recurring mark. Its one accent, Flexoki red-400, is kept for the circle, the timeline dots, list dashes, quote marks and links, and for `**bold**` text: in Nothing, emphasis is red at the surrounding weight, in headings too (`## Nothing, **designed**`). Section slides show their number in large thin figures. Prose slides rest the text on the bottom margin. A lede followed by a list sets the list beside the heading.
 
@@ -86,13 +97,14 @@ Open **Design** to change the look. Nothing in your text changes.
 
 - **Themes:** live previews of the current slide in every theme
 - **Style:**
-  - title and body font, chosen from 19 bundled faces or System
+  - title and body font, chosen from 26 bundled faces, System or Helvetica
   - size (S, M, L, XL)
+  - type: contrast between title sizes, title weight, line spacing, title alignment, label style (caps, small caps or plain) and numbers (lining or old style)
   - appearance
   - title, body and background colors, set separately for light and dark: any Flexoki color, a pattern that changes every slide, or a custom color
-  - header and footer slots
+  - header and footer slots, and a short title for `{title}`
   - aspect ratio
-- **Slide:** the current slide's layout and the markdown guide
+- **Slide:** the current slide's layout
 
 ### Settings
 
@@ -110,6 +122,13 @@ title-color: "#100F0F / #DFB431"   # light / dark, "-" keeps the theme's
 background: "pattern:pastel / -"   # a color or a pattern
 header: " |  | {date}"             # left | center | right
 footer: "{title} |  | {count}"     # {title} {number} {count} {date} or any text
+short: "Platform review"           # what {title} shows; long titles are cut at a word
+contrast: dramatic                 # subtle | standard | dramatic
+weight: bold                       # light | regular | bold (title weight)
+leading: loose                     # tight | normal | loose
+align: center                      # start | center (titles and statements)
+labels: small-caps                 # caps | small-caps | normal
+numerals: oldstyle                 # lining | oldstyle
 ---
 ```
 
@@ -181,4 +200,4 @@ src/
 
 All theme colors come from [Flexoki](https://stephango.com/flexoki) by Steph Ango (MIT): warm paper and ink neutrals, with accents chosen per theme.
 
-All fonts are open source (SIL OFL) and self-hosted through Fontsource: Inter, Inter Tight, DM Sans, Hanken Grotesk, Montserrat, Space Grotesk, IBM Plex Sans and Mono, Noto Sans, Noto Serif, Newsreader, EB Garamond, Cormorant, Bodoni Moda, Fraunces, Instrument Serif and JetBrains Mono. System and Helvetica use the fonts already on your computer.
+All fonts are open source (SIL OFL) and self-hosted through Fontsource: Inter, Inter Tight, DM Sans, Hanken Grotesk, Montserrat, Space Grotesk, IBM Plex Sans and Mono, Noto Sans, Instrument Sans, Geist and Geist Mono, Bricolage Grotesque, Archivo, Atkinson Hyperlegible Next, Noto Serif, Newsreader, Source Serif 4, Literata, EB Garamond, Cormorant, Bodoni Moda, Fraunces, Instrument Serif, Martian Mono and JetBrains Mono. System and Helvetica use the fonts already on your computer.

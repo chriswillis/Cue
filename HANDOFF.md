@@ -2,7 +2,7 @@
 
 Read this first when you pick up the project in a new session. For how the code works, read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-**Status (2026-10-10):** alpha 0.1.0, live and in daily use. Steps 1–5 of "Next up" are committed. Step 6 (the deploy smoke test) is built and tested locally, waiting for Chris to review and commit. Everything below is built, committed and deployed unless it's listed under "Next up" or "Ideas and open threads".
+**Status (2026-10-11):** alpha 0.1.0, live and in daily use. Steps 1–6 of "Next up" are committed. **The themes, markdown and typography round (section 9) is built and tested, waiting for Chris to review and commit.** Everything below is built, committed and deployed unless it's listed under "Next up", "Ideas and open threads" or section 9.
 
 ---
 
@@ -62,16 +62,23 @@ npm run smoke      # opens dist/ in headless Chrome and checks it works
 - On-slide text is colored by the slide's place in the deck, **blue → purple → magenta → red → orange → gold** (`badges.ts`), with a faint ⇥ on tabbed lines. Notes are plain ink; comments are grey italics.
 - The cursor takes the current slide's color.
 - Enter keeps the tab; Enter on a line that's only a tab drops it.
+- Autocomplete (`complete.ts`) for front matter keys and values, `//` directives, fence languages and callout types.
+- A slide that doesn't fit even at the smallest type step gets an orange ring on its badge and thumbnail, and "Too much for one slide" under the preview.
 
 **Layouts**
 
 - cover, section, content, statement, quote, split, columns, timeline, gallery, full.
 - Kickers (a small heading above a bigger one) and `######` footnotes.
-- Big-figure columns: when every column head is a short number.
+- Big-figure columns: when every column head is a short number. Figures never wrap; they share one size (the largest at which the widest fits), and units are set smaller (`$4.2M`).
+- `fit()` steps type down until nothing overflows, and steps body text up (`--grow`, up to 1.24) on sparse content, columns and split slides. Titles keep their size.
+- Slide directives: `// layout: x`, `// dark` / `light` / `invert`, `// image: contain`, `// chart: bar|line`, `// timer: 5:00`.
 
 **Themes**
 
-- 18 themes. iA's 12 (New York, Basel, San Francisco, LA, Copenhagen, Vancouver, Tokyo, Milano, Zurich, Paris, Helvetica, Garamond), plus Swiss, Editorial, Plex, Poster, Quiet and Nothing.
+- 16 themes in 5 groups by feel: **Plain** (Swiss, Zurich, Plex), **Book** (Garamond, Editorial, Paris, Basel), **Loud** (New York, Poster, San Francisco), **Color** (LA, Tokyo, Milano), **Quiet** (Quiet, Copenhagen, Nothing).
+- Vancouver and Helvetica were merged into LA and Swiss (`THEME_ALIASES` in `themes.ts`): old decks open in the survivor with the old fonts.
+- Signature details in `slide.css` ("Signature moves"): Swiss (a big red number on section slides; the grid lines behind it were removed), Editorial (column rules, date at top right), Poster (top band, huge section numbers), Basel (titles on a band of ink, in the iA section). Editorial's dark ground is warm gray and San Francisco's is deep purple.
+- **Tried and rejected (2026-10-11), don't redo:** signature details for Garamond (drop cap, centered running head and folio), Paris (italic titles, blue ink), Plex (bracketed labels), Tokyo (lettered station badge) and Milano (gold frame); tinted dark grounds for Plex, Garamond, Copenhagen and Quiet; four new themes, Riso, Archive, Blueprint and Signal. Chris compared each before and after and kept the originals. Kept: Swiss, Editorial, Basel, Poster, San Francisco, and the Vancouver and Helvetica merges.
 - **Nothing:**
   - Hanken Grotesk 300/400, IBM Plex Mono labels, hairlines.
   - A Red-400 accent (#D14D41) in light and dark, used for a hollow circle mark.
@@ -80,14 +87,18 @@ npm run smoke      # opens dist/ in headless Chrome and checks it works
 **Design panel**
 
 - Theme thumbnails.
-- Title and body fonts (19 faces), size S–XL, appearance.
+- Title and body fonts (28 faces), size S–XL, appearance.
+- Type controls, each a front matter key written only when set: `contrast`, `weight`, `leading`, `align`, `labels` (caps / small caps / plain), `numerals`.
 - Colors: Flexoki swatches, patterns, or custom, set separately for light and dark.
-- Three-slot header and footer with `{title} {number} {count} {date}`.
-- Aspect ratio, a per-slide layout, and the Markdown guide.
+- Three-slot header and footer with `{title} {number} {count} {date}`, and a `short:` title for `{title}`. Slots that don't fit are cut at a word.
+- Aspect ratio and a per-slide layout.
+- The **Markdown guide** is its own panel now (the ? button, or menu → Markdown guide): click an example to insert it.
 
 **Markdown**
 
 - All of iA's syntax: highlight, sup/sub, task lists, definition lists, footnotes (numbered per slide), math (KaTeX), merged table cells, table captions, `<img>`.
+- Callouts (`> [!NOTE]` and the four other GitHub kinds), code with Flexoki syntax colors and line focus (` ```js {2,4} `), charts from tables, timers, image captions from the title and focal points (`photo.jpg#bottom`).
+- Code never shows ligatures, keeps whole lines (it shrinks to 60% before wrapping) and uses the full width; so do tables, math and charts. Text keeps an 8-column measure.
 
 **Saving**
 
@@ -123,11 +134,16 @@ npm run smoke      # opens dist/ in headless Chrome and checks it works
 - **Rename** uses `FileSystemFileHandle.move()`, which only exists in Chromium; elsewhere it falls back to a toast.
 - **Share links made on localhost only open on the same machine.** Make share links from the live site.
 - **The TDZ trap again (2026-10-09):** `SHARED_KEY` was first declared below `boot()` and broke reloading a shared deck. It now sits at the top of `main.ts`. Anything `boot()` reads before its first `await` must be declared above the `boot()` call.
+- **Margin resets must be `:where()` (2026-10-11).** `.slide p { margin: 0 }` outranked `.s-body > * + *`, so paragraphs, and lists or quotes after a paragraph, had no gap. The resets now have zero specificity.
+- **1 px lines vanish in thumbnails.** Slides are shown at a quarter size or less, so any texture or grid needs lines of 2 px or more.
+- **Hanging punctuation skips list items:** a hung quote mark collided with the bullet.
+- **The parser drops the whole front matter while a line in it is half typed** (no colon yet), so `complete.ts` finds the front matter block itself.
+- **Syntax colors arrive after the first render.** `highlight.ts` is a separate chunk; when it loads, `onHighlighterReady` clears the slide cache and re-renders (main window and presenter window).
 - **The presenter channel id is per page load, not in `sessionStorage`** (the plan said sessionStorage). Duplicating a tab copies its sessionStorage, which would bring the cross-talk back. A reload sends `bye` (now on `pagehide`), which closes the old presenter window anyway.
 
 ## 7. Next up: agreed plan
 
-Agreed with Chris on 2026-10-09, after reviewing a list of UX and security suggestions. Build in this order. **Steps 1–5 are built and committed. Step 6 is built (2026-10-10, pending commit).** Import of a zip or several `.md` files (end of step 2) is not built yet. **Step 7 is next.** Step 2b (moving to `cue.cewillis.com`) needs import first.
+Agreed with Chris on 2026-10-09, after reviewing a list of UX and security suggestions. Build in this order. **Steps 1–6 are built and committed.** Import of a zip or several `.md` files (end of step 2) is not built yet. **Step 7 is next.** Step 2b (moving to `cue.cewillis.com`) needs import first.
 
 1. ✅ **Shared links: hide the key, keep the deck.**
    - After a share link decrypts, remove the `#v1k…` / `#v1p…` fragment from the address bar with `history.replaceState`. `clearHash()` already exists in `main.ts`; today it only runs on error or when leaving shared mode.
@@ -175,6 +191,18 @@ Agreed with Chris on 2026-10-09, after reviewing a list of UX and security sugge
 ## 8. Ideas and open threads
 
 - **Posters / generated backgrounds:** paused. See `spike/HANDOFF.md`. Chris wants to explore a node-based generator in the style of [Book of Shapes](https://bookofshapes.com/) next.
-- **Slides from iA's examples that Cue doesn't do yet:** a live timer slide; native charts.
-- **More minimal / "textural" themes:** Chris asked for "some more" and gave one (Nothing). Expect more theme briefs in the same format: name, description, typography and screenshots.
-- **Bundle size:** the main chunk is about 700 KB (fonts, KaTeX, CodeMirror). See step 8 of the plan.
+- **More minimal / "textural" themes:** Chris asked for "some more" and gave one (Nothing). Four I designed without a brief (Riso, Archive, Blueprint, Signal) were rejected; new themes should start from Chris's briefs: name, description, typography and screenshots.
+- **Bundle size:** the main JS chunk is about 1.3 MB minified, 430 KB gzipped (KaTeX, CodeMirror, markdown-it); fonts load per face, only when used. Syntax colors are a separate 310 KB chunk loaded only for decks with code. See step 8 of the plan.
+- **Charts:** bar and line only, up to 4 series, no hover (slides are presented, not explored). Ideas: horizontal bars for long labels, a stacked option, small multiples.
+
+## 9. Themes, markdown and typography round (2026-10-11, pending commit)
+
+From an audit of all 18 themes, light and dark, with a stress deck. Chris picked every item; all are built:
+
+- **Fixes:** paragraph spacing (the `:where()` resets), big figures that broke mid-number, code width/wrapping/ligatures, footnotes in sentence case, display math at step 1 and start-aligned, size-aware tracking with word spacing, footer titles cut at a word plus `short:`.
+- **Type:** sparse slides grow, real small caps (`labelCase: 'small-caps'`, available to themes and as the `labels` setting), optical sizes for Fraunces (now `full.css`), hanging punctuation on headings and paragraphs, 9 new faces (Instrument Sans, Geist, Bricolage Grotesque, Archivo, Atkinson Hyperlegible Next, Source Serif 4, Literata, Martian Mono, Geist Mono), and the six type controls.
+- **Themes:** regrouped, two merged, signature details for four themes, two new dark grounds. After a before/after review Chris kept those and rejected the rest (see section 5).
+- **Markdown:** callouts, syntax colors and line focus, image fit/focus/captions, smaller units in figures, charts, timers.
+- **Editor:** autocomplete, the too-full warning, the Markdown guide panel.
+
+Tested in headless Chromium: every theme light and dark on the sample deck and a stress deck, portrait 9:16, the alias decks, the Design panel, the guide and autocomplete; `tsc`, build and `npm run smoke` pass. Not tested on Chris's Mac: Helvetica and System (they fall back to Inter on Linux), and Safari.
