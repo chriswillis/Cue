@@ -169,6 +169,7 @@ Before publishing, the workflow runs a **smoke test** (`npm run smoke`, `scripts
 | `src/markdown.ts` | The markdown dialect (markdown-it + highlight, sup/sub, footnotes, math, tasks, callouts, code fences…). |
 | `src/highlight.ts` | Syntax colors for code (Lezer parsers). Loaded on demand, only when a deck has code in a known language. |
 | `src/render.ts` | Slide DOM, autolayout, fit-to-slide (shrink, grow, figures, code, hanging punctuation), header/footer slots, timers, big numbers, agendas, webview placeholders, scaling, and `activate()` (what runs while presenting). |
+| `src/datatype.ts` | Inline charts (`{l:…}`, `{b:…}`, `{p:…}`): the syntax, its screen reader label, and stripping charts from plain-text titles. The markdown rule is in `markdown.ts`; the Datatype font draws them (`src/fonts/`, `.s-dt` in `slide.css`). |
 | `src/chart.ts` | `// chart: bar` / `line`: a slide's table drawn as SVG. |
 | `src/cycle.ts` | `// layout: cycle`: the loop's geometry in slide pixels, drawn as SVG, with HTML labels around it. |
 | `src/web.ts` | `// web:`: which addresses are allowed, embed links for video and design services, the sandboxed frame. |
@@ -176,6 +177,7 @@ Before publishing, the workflow runs a **smoke test** (`npm run smoke`, `scripts
 | `src/guide.ts` | The Markdown guide panel, with examples that insert at the cursor. |
 | `src/themes.ts` | Every theme as data, compiled to CSS variables. |
 | `src/typefaces.ts`, `src/fonts.ts` | Bundled fonts and their best weights. |
+| `src/fonts/` | Fonts that aren't on Fontsource: Datatype (inline charts) and its OFL license. |
 | `src/flexoki.ts` | The Flexoki palette, color patterns and swatches. |
 | `src/badges.ts` | The editor's blue → gold slide colors. |
 | `src/inspector.ts` | The Design panel. |

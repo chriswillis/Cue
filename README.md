@@ -61,6 +61,7 @@ Cue adds:
 - Code with syntax colors (js, ts, jsx, python, css, html, json, rust, go, java, c, cpp, yaml) and line focus: ` ```js {2,4-5} ` keeps those lines bright and fades the rest
 - Image captions from the title, `![Tide](tide.jpg "Low tide")`, and a focal point for cropped images: `tide.jpg#bottom`, `#top-left` or `#30,70` (percent)
 - In big-figure columns, units and symbols are set smaller than the number (`$4.2M`, `118%`)
+- Charts the size of a word, anywhere in a line: `{l:20,45,60,55,80}` is a sparkline, `{b:30,60,45,80}` bars and `{p:62}` a pie. Values are whole numbers from 0 to 100, with no spaces, up to 20 of them. The chart takes the size, weight and color of the text around it, and screen readers hear the values. Anything Datatype can't draw stays as typed
 
 In Cue, list markers `-`, `+` and `*` follow standard Markdown: changing the marker starts a new list.
 
@@ -213,4 +214,4 @@ src/
 
 All theme colors come from [Flexoki](https://stephango.com/flexoki) by Steph Ango (MIT): warm paper and ink neutrals, with accents chosen per theme.
 
-All fonts are open source (SIL OFL) and self-hosted through Fontsource: Inter, Inter Tight, DM Sans, Hanken Grotesk, Montserrat, Space Grotesk, IBM Plex Sans and Mono, Noto Sans, Instrument Sans, Geist and Geist Mono, Bricolage Grotesque, Archivo, Atkinson Hyperlegible Next, Noto Serif, Newsreader, Source Serif 4, Literata, EB Garamond, Cormorant, Bodoni Moda, Fraunces, Instrument Serif, Martian Mono and JetBrains Mono. System and Helvetica use the fonts already on your computer.
+All fonts are open source (SIL OFL) and self-hosted through Fontsource: Inter, Inter Tight, DM Sans, Hanken Grotesk, Montserrat, Space Grotesk, IBM Plex Sans and Mono, Noto Sans, Instrument Sans, Geist and Geist Mono, Bricolage Grotesque, Archivo, Atkinson Hyperlegible Next, Noto Serif, Newsreader, Source Serif 4, Literata, EB Garamond, Cormorant, Bodoni Moda, Fraunces, Instrument Serif, Martian Mono and JetBrains Mono. System and Helvetica use the fonts already on your computer. Inline charts are drawn by [Datatype](https://franktisellano.github.io/datatype/) by Frank Tisellano (SIL OFL, bundled in `src/fonts/` with its license).

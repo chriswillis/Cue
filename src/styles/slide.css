@@ -342,6 +342,37 @@
 }
 .slide .s-footnotes .footnotes-list > li::before { font-family: var(--font-label); font-size: 0.9em; }
 
+/* ---------- Inline charts: {l:…} {b:…} {p:…} (datatype.ts) ---------- */
+/* Datatype by Frank Tisellano, SIL Open Font License (src/fonts/Datatype-OFL.txt).
+   Its ligatures turn the typed text into the chart, so the chart takes the size,
+   weight and color of the line it sits in. Everything that would change the
+   letters before the ligatures form (case, small caps, tracking, numerals,
+   other features) is reset here. Unscoped, so charts in notes draw too. */
+@font-face {
+  font-family: 'Datatype';
+  src: url('../fonts/Datatype.woff2') format('woff2');
+  font-weight: 100 900;
+  font-stretch: 0% 100%;
+  font-display: block;
+}
+.s-dt {
+  font-family: 'Datatype' !important;
+  font-style: normal;
+  font-synthesis: none;
+  font-stretch: 50%; /* the font's spacing between bars and points; 0% packs them tight */
+  font-variation-settings: normal;
+  font-variant: normal;
+  font-variant-ligatures: common-ligatures contextual;
+  font-feature-settings: 'liga' 1, 'calt' 1 !important;
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+  word-spacing: 0;
+  white-space: nowrap;
+  line-height: 1;
+}
+/* In a table cell a chart is the row's picture: set it larger than the cell's text */
+.slide td .s-dt { font-size: 1.5em; vertical-align: -0.1em; }
+
 /* ---------- Figures ---------- */
 
 .s-figure {

@@ -2,7 +2,7 @@
 
 Read this first when you pick up the project in a new session. For how the code works, read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-**Status (2026-10-12):** alpha 0.1.0, live and in daily use. Steps 1–6 of "Next up" are committed. **The new slide types (section 10: timer ring and bar, big number, cycle, agenda, webview) are built and tested, waiting for Chris to review and commit.** Everything below is built, committed and deployed unless it's listed under "Next up", "Ideas and open threads" or section 10.
+**Status (2026-10-12):** alpha 0.1.0, live and in daily use. Steps 1–6 of "Next up" are committed. **The new slide types (section 10) are committed. Inline charts with Datatype (section 11) are built and tested, waiting for Chris to review and commit.** Everything below is built, committed and deployed unless it's listed under "Next up", "Ideas and open threads" or section 11.
 
 ---
 
@@ -214,7 +214,7 @@ From an audit of all 18 themes, light and dark, with a stress deck. Chris picked
 
 Tested in headless Chromium: every theme light and dark on the sample deck and a stress deck, portrait 9:16, the alias decks, the Design panel, the guide and autocomplete; `tsc`, build and `npm run smoke` pass. Not tested on Chris's Mac: Helvetica and System (they fall back to Inter on Linux), and Safari.
 
-## 10. New slide types (2026-10-12, built, pending commit)
+## 10. New slide types (2026-10-12, committed)
 
 Inspired by Beautiful.ai's Action Number, Timer, Webview and Arrow Cycle templates, done Cue's way: written as text, laid out automatically. Chris picked all four plus an agenda, `// web: URL` as the webview syntax, and timer visuals as opt-in. All built as planned; what's below is how they ended up.
 
@@ -244,3 +244,19 @@ Inspired by Beautiful.ai's Action Number, Timer, Webview and Arrow Cycle templat
 **Tested** in headless Chromium: all 16 themes light and dark, 9:16, live Present mode (count, roll, ring meter, timer ring, webview load, `I` and click-out), a shared link (asks before loading), Zurich's uniform headlines. `tsc`, build and `npm run smoke` pass. **Not tested:** Safari (`color-mix()` with `calc()` percentages in the cycle colors needs Safari 16.2+), real presenting on a second screen, and sites other than YouTube and example.com inside the webview.
 
 **Later ideas:** `// qr` (a QR code for the slide's link, made in the browser), `// layout: process` (a straight row of chevrons), hub and spoke (most of the cycle's geometry), `// focus` on agenda-style builds for lists.
+
+## 11. Inline charts with Datatype (2026-10-12, built, pending commit)
+
+Charts the size of a word, from [Datatype](https://franktisellano.github.io/datatype/), a variable font by Frank Tisellano (SIL OFL). Its ligatures turn typed text into a chart, so no drawing code is needed.
+
+- **Syntax:** `{l:…}` sparkline, `{b:…}` bars, `{p:62}` pie. Whole numbers 0–100, comma-separated, no spaces, up to 20 values (a pie takes one). Anything else stays plain text: over 100, spaces, 21 values, a pie with two values, and anything in code.
+- **Where:** `src/datatype.ts` holds the regex, `chartLabel()` (the `aria-label`, e.g. "Sparkline: 10, 30, 25") and `withoutCharts()`. An inline rule in `markdown.ts` (before `emphasis`) turns a match into `<span class="s-dt" role="img" aria-label="…">` with the text unchanged. `{` already stops markdown-it's text rule, so the rule sees it.
+- **Font:** `src/fonts/Datatype.woff2` (v1.000, the full axes: `wdth` 0–100, `wght` 100–900) plus `Datatype-OFL.txt`. Self-hosted because Google Fonts only serves `wdth` 50–100. Bundled by Vite, so the CSP (`font-src 'self'`) needed no change.
+- **CSS:** `.s-dt` in `slide.css`, unscoped so it also works in notes. It inherits size, weight (line thickness) and color, and resets everything that would change the letters before the ligatures form: `text-transform`, small caps, `letter-spacing`, numerals, other features, `font-variation-settings`. `font-stretch: 50%` is Datatype's default spacing.
+- **Kept out of plain text:** the deck title (`{title}` in footers) and agenda entries use `withoutCharts()`. A column head that holds a chart isn't treated as a big figure. `textLength()` counts a chart as about 4 characters, so it doesn't push a slide toward a denser layout.
+- **Guide and sample:** "Chart in a line" in the guide's Data and code group. Two sample slides after the bar chart, both labeled as example data: "Charts the size of a word" (a sparkline and a pie in a sentence; the notes credit Frank Tisellano) and "Trends at a glance" (a table with a 12-week sparkline and a share pie per region; each sparkline is scaled from its own low to high).
+- **In table cells** charts are set at 1.5× the cell's text (`.slide td .s-dt`), so a sparkline reads as the row's picture.
+
+**Tested** in headless Chromium: a stress deck (cover title, kicker, heading, body, list, table cells, column heads, statement, section, agenda, footer, and the cases that must stay plain text) in Nothing, Swiss, Garamond, Poster, Editorial, LA and Tokyo, light and dark; the sample deck in split view and Present mode. `tsc`, build and `npm run smoke` pass. **Not tested:** Safari, Firefox and a screen reader.
+
+**Ideas:** autocomplete for `{l:`; a preview of the chart in the editor; scaling real numbers (`{l:1210,1380,…}`) to 0–100 automatically, sparklines from their own low to high and bars from zero.

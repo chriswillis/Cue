@@ -196,6 +196,29 @@ Put `// chart: bar` (or `line`) on a slide and its table is drawn as a chart, in
 
 ---
 
+#### Example: a quarterly update
+## Charts the size of a word
+
+	Signups climbed all spring {l:10,18,15,30,42,40,61,78,74,100} and three of four teams {p:75} hit their goal.
+
+Type `{l:…}` for a sparkline, `{b:…}` for bars or `{p:…}` for a pie, with whole numbers from 0 to 100. The chart sits in the sentence and takes its size, weight and color. The charts are drawn by Datatype, a font by Frank Tisellano.
+
+---
+
+#### Example: revenue by region
+## Trends at a glance
+
+	| Region | Last 12 weeks | Revenue | Share |
+	|:--|:--|--:|--:|
+	| Europe | {l:0,10,19,18,38,46,54,64,61,77,88,100} | $6.1M | {p:41} 41% |
+	| Asia | {l:10,22,0,41,50,36,65,78,82,69,91,100} | $3.8M | {p:26} 26% |
+	| Americas | {l:100,90,81,87,63,54,61,37,27,22,11,0} | $3.5M | {p:24} 24% |
+	| Africa | {l:0,3,18,15,33,40,38,58,68,65,87,100} | $1.3M | {p:9} 9% |
+
+Charts work in table cells too. Each sparkline runs from that region's lowest week to its highest, so you see the shape of the trend; the pies show each region's share of revenue.
+
+---
+
 ## Code and callouts
 
 	```js {2}

@@ -6,6 +6,7 @@ import { resolveColor } from './flexoki';
 import { chartSVG } from './chart';
 import { cycleDiagram, cycleStyle, CYCLE_MAX } from './cycle';
 import { webTarget, webFrame } from './web';
+import { withoutCharts } from './datatype';
 
 /**
  * Slide rendering + autolayout.
@@ -368,8 +369,9 @@ function analyze(blocks: Block[]): Analysis {
   return a;
 }
 
+/** Characters of text, with an inline chart counted as a short word. */
 function textLength(els: HTMLElement[]): number {
-  return els.reduce((n, e) => n + (e.textContent?.length ?? 0), 0);
+  return els.reduce((n, e) => n + (e.textContent?.length ?? 0) - [...e.querySelectorAll('.s-dt')].reduce((k, c) => k + (c.textContent?.length ?? 0) - 4, 0), 0);
 }
 
 /** The title heading itself (a.title also holds its kicker and subtitle). */
@@ -495,7 +497,7 @@ export function renderSlide(src: SlideSource, opts: RenderOptions): HTMLElement 
       const cols = el('div', `s-columns n-${Math.min(n, 6)}`);
       // Short numeric heads (0, 42%, $3M) read as figures: set them big
       const figure = (t: string) => t.length <= 6 && /\d/.test(t) && !/\s/.test(t);
-      if (layout === 'columns' && a.sections.every((s) => figure(s.head?.textContent?.trim() ?? ''))) {
+      if (layout === 'columns' && a.sections.every((s) => !s.head?.querySelector('.s-dt') && figure(s.head?.textContent?.trim() ?? ''))) {
         cols.classList.add('is-figures');
         a.sections.forEach((s) => s.head && splitUnits(s.head));
       }
@@ -1307,7 +1309,7 @@ export function sectionList(nodes: (HTMLElement | null)[]): SectionEntry[] {
   const out: SectionEntry[] = [];
   nodes.forEach((n, i) => {
     if (n?.dataset.layout !== 'section' || n.classList.contains('has-timer') || (i === nodes.length - 1 && i > 0)) return;
-    const title = n.querySelector('.s-title')?.textContent?.trim();
+    const title = withoutCharts(n.querySelector('.s-title')?.textContent ?? '');
     if (title) out.push({ title, index: i });
   });
   return out;

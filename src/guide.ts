@@ -49,6 +49,7 @@ const GUIDE: { group: string; items: Example[] }[] = [
       { title: 'Growth', hint: 'Counts up from one value to the other', code: '## $2.9M → $4.2M\n\tAnnual recurring revenue\n// count' },
       { title: 'Percentage as a ring', hint: 'or // number: bar', code: '## 72%\n\tOf teams use it every week\n// number: ring' },
       { title: 'Chart from a table', hint: 'bar or line', code: '// chart: bar\n## Revenue by quarter\n\n\t| Quarter | Revenue |\n\t|---|--:|\n\t| Q1 | $1.2M |\n\t| Q2 | $1.9M |\n\t| Q3 | $2.4M |' },
+      { title: 'Chart in a line', hint: 'l sparkline, b bars, p pie; whole numbers 0 to 100', code: '\tSignups {l:10,24,33,55,65,86,100} doubled.\n\tThree of four teams {p:75} hit their goal.' },
       { title: 'Code with focus', hint: 'The listed lines stay bright', code: '\t```js {2}\n\tconst deck = parse(script);\n\tpresent(deck);\n\t```' },
       { title: 'Math', code: '\t$$\n\te = mc^2\n\t$$' },
     ],

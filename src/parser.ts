@@ -27,6 +27,7 @@
  */
 
 import { THEME_ALIASES } from './themes';
+import { withoutCharts } from './datatype';
 
 export type LineRole =
   | 'frontmatter'
@@ -502,7 +503,7 @@ export function parse(text: string): ParsedDoc {
   for (const s of slides) {
     const m = /^#\s+(.+)$/m.exec(s.visibleMd);
     if (m) {
-      title = m[1].replace(/[*_`]/g, '').trim();
+      title = withoutCharts(m[1].replace(/[*_`]/g, ''));
       break;
     }
   }

@@ -13,6 +13,7 @@
  *   <img src alt title width height>  on its own line, as a safe image
  *   > [!NOTE] / [!TIP] / [!IMPORTANT] / [!WARNING] / [!CAUTION]   callouts
  *   ```js {2,4-5}          syntax colors; the listed lines are in focus
+ *   {l:20,45,80} {b:…} {p:62}   inline charts, drawn by the Datatype font (datatype.ts)
  *
  * Raw HTML stays off: shared links can carry anyone's markdown.
  */
@@ -23,6 +24,7 @@ import mark from 'markdown-it-mark';
 import footnote from 'markdown-it-footnote';
 import deflist from 'markdown-it-deflist';
 import 'katex/dist/katex.min.css';
+import { DATATYPE, chartLabel, chartValues } from './datatype';
 
 export const md = new MarkdownIt({ html: false, linkify: true, typographer: true, breaks: false });
 
@@ -180,6 +182,32 @@ function script(marker: '^' | '~', tag: 'sup' | 'sub') {
 }
 md.inline.ruler.after('emphasis', 'sup', script('^', 'sup'));
 md.inline.ruler.after('emphasis', 'sub', script('~', 'sub'));
+
+/* ---------------- inline charts: {l:…} {b:…} {p:…} ---------------- */
+// The text stays as typed; the Datatype font's ligatures draw it. The span
+// sets the font and gives screen readers the values instead of the braces.
+const CHART_AT = new RegExp(DATATYPE.source, 'y');
+
+md.inline.ruler.before('emphasis', 'datatype', (state: StateInline, silent: boolean): boolean => {
+  if (state.src.charCodeAt(state.pos) !== 0x7b /* { */) return false;
+  CHART_AT.lastIndex = state.pos;
+  const m = CHART_AT.exec(state.src);
+  if (!m || state.pos + m[0].length > state.posMax) return false;
+  const values = chartValues(m[1], m[2]);
+  if (!values) return false;
+  if (!silent) {
+    const t = state.push('datatype', 'span', 0);
+    t.content = m[0];
+    t.meta = { label: chartLabel(m[1] as 'l' | 'b' | 'p', values) };
+  }
+  state.pos += m[0].length;
+  return true;
+});
+
+md.renderer.rules.datatype = (tokens, idx) => {
+  const t = tokens[idx];
+  return `<span class="s-dt" role="img" aria-label="${md.utils.escapeHtml(String(t.meta?.label ?? ""))}">${md.utils.escapeHtml(t.content)}</span>`;
+};
 
 /* ---------------- task lists ---------------- */
 md.core.ruler.after('inline', 'tasks', (state: StateCore) => {
