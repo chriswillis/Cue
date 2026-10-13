@@ -2,7 +2,7 @@
 
 Read this first when you pick up the project in a new session. For how the code works, read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-**Status (2026-10-11):** alpha 0.1.0, live and in daily use. Steps 1–6 of "Next up" are committed. **The themes, markdown and typography round (section 9) is built and tested, waiting for Chris to review and commit.** Everything below is built, committed and deployed unless it's listed under "Next up", "Ideas and open threads" or section 9.
+**Status (2026-10-12):** alpha 0.1.0, live and in daily use. Steps 1–6 of "Next up" are committed. **The new slide types (section 10: timer ring and bar, big number, cycle, agenda, webview) are built and tested, waiting for Chris to review and commit.** Everything below is built, committed and deployed unless it's listed under "Next up", "Ideas and open threads" or section 10.
 
 ---
 
@@ -70,11 +70,11 @@ npm run smoke      # opens dist/ in headless Chrome and checks it works
 
 **Layouts**
 
-- cover, section, content, statement, quote, split, columns, timeline, gallery, full.
+- cover, section, content, statement, quote, split, columns, timeline, gallery, full, plus (section 10) number, cycle, agenda and web.
 - Kickers (a small heading above a bigger one) and `######` footnotes.
 - Big-figure columns: when every column head is a short number. Figures never wrap; they share one size (the largest at which the widest fits), and units are set smaller (`$4.2M`).
 - `fit()` steps type down until nothing overflows, and steps body text up (`--grow`, up to 1.24) on sparse content, columns and split slides. Titles keep their size.
-- Slide directives: `// layout: x`, `// dark` / `light` / `invert`, `// image: contain`, `// chart: bar|line`, `// timer: 5:00`.
+- Slide directives: `// layout: x`, `// dark` / `light` / `invert`, `// image: contain`, `// chart: bar|line`, `// timer: 5:00 [ring|bar] [next]` or `until 14:45`, `// count[: roll]`, `// number: ring|bar`, `// web: https://…`, `// focus: 2`.
 
 **Themes**
 
@@ -142,6 +142,10 @@ npm run smoke      # opens dist/ in headless Chrome and checks it works
 - **Hanging punctuation skips list items:** a hung quote mark collided with the bullet.
 - **The parser drops the whole front matter while a line in it is half typed** (no colon yet), so `complete.ts` finds the front matter block itself.
 - **Syntax colors arrive after the first render.** `highlight.ts` is a separate chunk; when it loads, `onHighlighterReady` clears the slide cache and re-renders (main window and presenter window).
+- **app.css styles every `svg` as an 18 px icon** (2026-10-12). Slide SVGs must set their own `width`/`height` (`.c-svg`, `.cy-svg`, the ring meters) and `stroke: none` where they draw text, or they render as tiny stroked icons.
+- **An absolutely positioned grid item measures from its grid area** (2026-10-12). `.s-timer` has `grid-column: 1 / -1`, so `right: var(--mx)` landed two margins in; `right: 0` sits on the margin.
+- **YouTube embeds need a referrer** (error 153 "video player configuration error" without one). `web.ts` sends only Cue's origin (`strict-origin`) to youtube-nocookie.com and no referrer anywhere else.
+- **Zurich's one headline size uses `!important`** on every heading, so a heading that isn't a title (the big number, cycle labels) needs its own `!important` override at the end of slide.css.
 - **The presenter channel id is per page load, not in `sessionStorage`** (the plan said sessionStorage). Duplicating a tab copies its sessionStorage, which would bring the cross-talk back. A reload sends `bye` (now on `pagehide`), which closes the old presenter window anyway.
 
 ## 7. Next up: agreed plan
@@ -209,3 +213,34 @@ From an audit of all 18 themes, light and dark, with a stress deck. Chris picked
 - **Editor:** autocomplete, the too-full warning, the Markdown guide panel.
 
 Tested in headless Chromium: every theme light and dark on the sample deck and a stress deck, portrait 9:16, the alias decks, the Design panel, the guide and autocomplete; `tsc`, build and `npm run smoke` pass. Not tested on Chris's Mac: Helvetica and System (they fall back to Inter on Linux), and Safari.
+
+## 10. New slide types (2026-10-12, built, pending commit)
+
+Inspired by Beautiful.ai's Action Number, Timer, Webview and Arrow Cycle templates, done Cue's way: written as text, laid out automatically. Chris picked all four plus an agenda, `// web: URL` as the webview syntax, and timer visuals as opt-in. All built as planned; what's below is how they ended up.
+
+0. **`activate(slide, opts)`** in `render.ts` replaced `startTimers()`. The Stage and the presenter window call it on their copy of the current slide; it runs timers, count-ups and webviews and returns a stop function. Every other copy stays still (final numbers, full rings, placeholders). See ARCHITECTURE, "What runs while presenting".
+1. **Timer ring and bar.** `parseTimer()` in `parser.ts` reads `5:00`, `90`, `5 min` or `until 14:45` (also `2:45pm`), plus `ring`, `bar`, `next` in any order. `SlideSource.timer` is now an object (`Timer`), not seconds.
+   - Ring alone: centered, 86% of the text height. With a title or text (`timer-beside`): the words take six columns and the ring sits on the right margin; in portrait, below them.
+   - Bar: a band on the slide's bottom edge. On a slide with other content (anything but statement, section or cover), the digits are set small on the footer line, centered (no theme uses the center footer slot).
+   - `next` only fires for a timer that was running when its slide came up. A duration timer restarts when you go back to its slide (as before), so it runs its full time again before moving on; an `until` timer that has passed never moves you on.
+   - Ring stroke weight per theme: `--ring-w` (Nothing 0.8, Quiet and bookish themes 1.2, Poster, New York and LA 4).
+2. **Big number.** `chooseLayout()` picks `number` for a title that is only a figure (`isFigure()`: up to 12 characters, no spaces, 3-character prefix, 4-character suffix) or a growth (`growthOf()`: `A → B`, also `->`). A lone 4-digit year stays a section, so decks with `## 2026` section slides don't change (checked: the sample deck and every example render the same layouts as before).
+   - The figure fits its width (`fitNumber()`, `--num-k`), with units smaller (`splitUnits()` now also wraps the number in `.s-num` with its value, decimals and separators, which is what `// count` animates; that works on figure columns too).
+   - Growth shows the new value big, and "+45% from $2.9M" under it (percentage points for percentages).
+   - `// number: ring` puts a percentage inside a ring with the words beside it; `bar` draws a meter under it. Both fill in step with `// count`.
+   - `// count: roll`: each digit is a reel of 21 digits, 1.4em apart, clipped to the digit's height; leftmost settles last.
+3. **Arrow cycle.** `src/cycle.ts`. Geometry in slide pixels: ring radius `min(h × 0.3, w × 0.21)` of the box beside the title (the right eight columns in landscape; below the title in portrait). Labels are HTML, anchored by which side of the circle they're on, as wide as that side allows. `overflows()` also checks the labels stay inside the cycle's box, so `fit()` shrinks them.
+   - Chevron style everywhere except Nothing, Quiet, Copenhagen, Milano, Garamond, Paris and Editorial, which get the line style (hairline circle, hollow dots, small arrowheads, "01" labels).
+   - Chevrons are the accent deepening toward the title color step by step (`--k`); on pattern backgrounds, shades of the text color.
+   - More than 7 steps: falls back to columns with the too-full ring (`is-crowded`).
+4. **Webview.** `src/web.ts`. https only, no credentials in the URL. A page on Cue's own site (cewillis.com, while Cue lives at cewillis.com/Cue) is framed without `allow-same-origin`, so it runs in an opaque origin and can't read the deck library or lift its sandbox; any other site gets its own origin. The bar and the card's address are set without letter spacing. Placeholder card (domain, "Live when presenting", "Open in new tab ↗"); an image on the slide becomes its poster. Framed with a thin domain bar under a title, edge to edge alone (`is-bleed`, no header or footer).
+   - CSP: `frame-src https:` added in `vite.config.ts`.
+   - Live only on the Stage. Shield over the page; `I` lifts it (`is-interacting` on the stage) and focuses the page; a click beside it or Esc (when the page doesn't have focus) puts it back. Stage clicks ignore buttons now too.
+   - Shared decks: `stage.askWeb = sharedMode`, so the card shows "Load example.com" first.
+5. **Agenda.** `// layout: agenda`. Lists the section slides (`sectionList()`), leaving out breaks (a section with a timer) and a section that's the last slide. The section after the agenda is lit and the earlier ones step back; an agenda before all sections (the opening one) or after all of them lights nothing. A tabbed list on the slide replaces the automatic one. `// focus: n` overrides. More than six items go in two columns.
+6. **`// focus: 2`** (also `2,4` and `2-4`): dims the other steps in cycles, columns and timelines, and picks the current agenda item.
+7. Guide examples, autocomplete for every new directive, and the sample deck (cycle, growth with `// count`, an agenda before part three, a webview of cewillis.com, the questions timer now a ring; "by the numbers" says 14 layouts).
+
+**Tested** in headless Chromium: all 16 themes light and dark, 9:16, live Present mode (count, roll, ring meter, timer ring, webview load, `I` and click-out), a shared link (asks before loading), Zurich's uniform headlines. `tsc`, build and `npm run smoke` pass. **Not tested:** Safari (`color-mix()` with `calc()` percentages in the cycle colors needs Safari 16.2+), real presenting on a second screen, and sites other than YouTube and example.com inside the webview.
+
+**Later ideas:** `// qr` (a QR code for the slide's link, made in the browser), `// layout: process` (a straight row of chevrons), hub and spoke (most of the cycle's geometry), `// focus` on agenda-style builds for lists.

@@ -1,7 +1,7 @@
 /**
  * Autocomplete for the parts of Cue's markdown that are hard to remember:
  *   front matter     keys, then their values (themes, fonts, sizes…)
- *   // directives    layout, dark/light/invert, image, chart, timer
+ *   // directives    layout, dark/light/invert, image, chart, timer, count, number, web, focus
  *   ``` fences       languages with syntax colors
  *   > [!             callout kinds
  *
@@ -59,6 +59,15 @@ const DIRECTIVES: Completion[] = [
   opt('chart: bar', 'Draw the table as bars'),
   opt('chart: line', 'Draw the table as lines'),
   opt('timer: 5:00', 'A countdown when presenting'),
+  opt('timer: 5:00 ring', 'A countdown inside a ring'),
+  opt('timer: 5:00 bar', 'A countdown bar along the bottom'),
+  opt('timer: until 14:45', 'Count down to a clock time'),
+  opt('count', 'Numbers count up when shown'),
+  opt('count: roll', 'Digits roll into place'),
+  opt('number: ring', 'Draw a percentage as a ring'),
+  opt('number: bar', 'Draw a percentage as a bar'),
+  opt('web: https://', 'A live web page when presenting'),
+  opt('focus: 2', 'Keep one step bright, fade the rest'),
 ];
 
 const LANGS = ['js', 'ts', 'jsx', 'tsx', 'python', 'css', 'html', 'json', 'rust', 'go', 'java', 'c', 'cpp', 'yaml'].map((v) => opt(v));

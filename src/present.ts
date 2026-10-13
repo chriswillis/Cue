@@ -1,5 +1,5 @@
 import type { Settings } from './parser';
-import { mountContain, startTimers } from './render';
+import { mountContain, activate } from './render';
 
 /**
  * Fullscreen audience view. Lives in the main window as an overlay so it can
@@ -13,9 +13,11 @@ export class Stage {
   private slides: HTMLElement[] = [];
   private settings!: Settings;
   private hudTimer = 0;
-  /** Stops the countdown on the slide being shown (`// timer:`) */
-  private stopTimers: () => void = () => {};
+  /** Stops what runs on the slide being shown: timers, count-ups, webviews (activate) */
+  private stopActive: () => void = () => {};
   index = 0;
+  /** Decks from a shared link ask before loading a webview */
+  askWeb = false;
   isOpen = false;
   onChange: (index: number) => void = () => {};
   onClose: () => void = () => {};
@@ -47,7 +49,9 @@ export class Stage {
     });
     this.layers.addEventListener('click', (e) => {
       const x = (e as MouseEvent).clientX / window.innerWidth;
-      if ((e.target as HTMLElement).closest('a')) return;
+      if ((e.target as HTMLElement).closest('a, button')) return;
+      // Using a webview: a click beside it hands control back to the slides
+      if (this.interacting) return this.interact(false);
       this.go(this.index + (x < 0.3 ? -1 : 1));
     });
     this.root.addEventListener('mousemove', () => this.pokeHud());
@@ -60,6 +64,9 @@ export class Stage {
   private wantsFullscreen = false;
   private timing = false;
   private timerStart = 0;
+  /** True right after open(): the first slide plays its entrance too */
+  private fresh = false;
+  private interacting = false;
 
   open(slides: HTMLElement[], settings: Settings, index: number, fullscreen = true): void {
     this.slides = slides;
@@ -69,6 +76,7 @@ export class Stage {
     this.root.dataset.appearance = settings.appearance;
     document.documentElement.classList.add('is-presenting');
     this.wantsFullscreen = fullscreen;
+    this.fresh = true;
     if (fullscreen && !document.fullscreenElement) {
       this.root.requestFullscreen?.().catch(() => (this.wantsFullscreen = false));
     }
@@ -88,7 +96,8 @@ export class Stage {
     this.isOpen = false;
     this.timing = false;
     this.root.hidden = true;
-    this.stopTimers();
+    this.interact(false);
+    this.stopActive();
     this.layers.replaceChildren();
     document.documentElement.classList.remove('is-presenting');
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
@@ -108,8 +117,18 @@ export class Stage {
     // A timer restarts when its slide comes back; an edit while presenting keeps it running
     if (changed || !this.timing) this.timerStart = performance.now();
     this.timing = true;
-    this.stopTimers();
-    this.stopTimers = startTimers(slide, this.timerStart);
+    this.interact(false);
+    this.stopActive();
+    this.stopActive = activate(slide, {
+      start: this.timerStart,
+      // Count-ups play when a slide arrives, not when an edit re-renders it
+      animate: changed || this.fresh,
+      onDone: () => {
+        if (this.isOpen && this.index === next) this.go(next + 1);
+      },
+      web: this.askWeb ? 'ask' : 'live',
+    });
+    this.fresh = false;
     const bg = getComputedStyle(slide).getPropertyValue('--bg');
     this.root.style.setProperty('--stage-bg', bg || '#000');
     const old = Array.from(this.layers.children).filter((c) => c !== layer) as HTMLElement[];
@@ -122,6 +141,20 @@ export class Stage {
     }
     this.counter.textContent = `${next + 1} / ${this.slides.length}`;
     if (changed && !silent) this.onChange(next);
+  }
+
+  /**
+   * A live webview sits behind a shield, so clicks and keys move the slides.
+   * I lifts it (and focuses the page); a click beside the page or Esc puts it back.
+   * While the page has focus its keys go to the page, so Esc only works after a click outside.
+   */
+  private interact(on: boolean): void {
+    const frame = this.layers.lastElementChild?.querySelector<HTMLIFrameElement>('.s-web.is-live .s-web-frame');
+    on = on && !!frame;
+    this.interacting = on;
+    this.root.classList.toggle('is-interacting', on);
+    if (on) frame!.focus();
+    else if (document.activeElement instanceof HTMLIFrameElement) (document.activeElement as HTMLElement).blur();
   }
 
   private pokeHud(): void {
@@ -138,7 +171,10 @@ export class Stage {
     else if (['ArrowLeft', 'ArrowUp', 'PageUp', 'Backspace', 'p', 'k', 'h'].includes(k)) this.go(this.index - 1);
     else if (k === 'Home') this.go(0);
     else if (k === 'End') this.go(this.slides.length - 1);
-    else if (k === 'Escape') this.close();
+    else if (k === 'Escape') {
+      if (this.interacting) this.interact(false);
+      else this.close();
+    } else if ((k === 'i' || k === 'I') && !e.metaKey && !e.ctrlKey) this.interact(!this.interacting);
     else if (k === 'f') {
       if (document.fullscreenElement) document.exitFullscreen();
       else this.root.requestFullscreen?.();

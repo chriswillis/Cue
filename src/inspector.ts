@@ -1,5 +1,5 @@
-import { TYPE_OPTIONS, type ColorPair, type Settings, type SlideSource, type TypeKey } from './parser';
-import { renderSlide, fit, mount, LAYOUTS, SLOT_PRESETS, fillSlot } from './render';
+import { TYPE_OPTIONS, renderKey, type ColorPair, type Settings, type SlideSource, type TypeKey } from './parser';
+import { renderSlide, fit, mount, isAgenda, LAYOUTS, SLOT_PRESETS, fillSlot, type SectionEntry } from './render';
 import { THEMES, THEME_GROUPS, getTheme } from './themes';
 import { TYPEFACES, getTypeface } from './typefaces';
 import { PATTERNS, SWATCH_ROWS, previewCSS, getPattern } from './flexoki';
@@ -23,6 +23,8 @@ export interface InspectorHost {
   slide(): SlideSource;
   deckTitle(): string;
   total(): number;
+  /** The deck's section slides, for agenda previews */
+  sections(): SectionEntry[];
   current(): number;
   update(patch: Partial<Settings>): void;
   setLayout(layout: string): void;
@@ -274,13 +276,14 @@ export class Inspector {
   /** Theme thumbnails show the current slide in each theme's own defaults. */
   private syncThumbs(s: Settings): void {
     const src = this.host.slide();
-    const key = JSON.stringify([src.visibleMd, src.layoutHint, src.imageFit, src.chart, src.timer, src.index, s.aspect, s.short, this.host.deckTitle()]);
+    const sections = isAgenda(src) ? this.host.sections() : undefined;
+    const key = JSON.stringify([renderKey(src), s.aspect, s.short, this.host.deckTitle(), sections ?? null]);
     if (key === this.thumbKey) return;
     this.thumbKey = key;
     this.root.querySelectorAll<HTMLElement>('.theme-tile').forEach((tile) => {
       const t = getTheme(tile.dataset.theme!);
       const settings: Settings = { ...s, ...RESET_TYPE, theme: t.id, appearance: t.defaultAppearance, titleFont: null, bodyFont: null, size: 'M', titleColor: [null, null], bodyColor: [null, null], background: [null, null], header: null, footer: null };
-      const node = renderSlide(src, { settings, deckTitle: this.host.deckTitle(), total: this.host.total() });
+      const node = renderSlide(src, { settings, deckTitle: this.host.deckTitle(), total: this.host.total(), sections });
       fit(node);
       mount(tile.querySelector('.frame')!, node, settings);
     });

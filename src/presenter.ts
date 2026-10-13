@@ -1,5 +1,5 @@
 import { parse, type ParsedDoc } from './parser';
-import { renderDeck, mount, renderNotes, startTimers } from './render';
+import { renderDeck, mount, renderNotes, activate } from './render';
 import { onHighlighterReady } from './markdown';
 
 /**
@@ -79,7 +79,7 @@ export function bootPresenter(): void {
   let running = true;
   let elapsed = 0;
   let lastTick = performance.now();
-  let stopTimers: () => void = () => {};
+  let stopActive: () => void = () => {};
   // A timer keeps running through edits; it restarts when its slide is shown anew
   let timerStart = performance.now();
   let timerIndex = -1;
@@ -95,12 +95,21 @@ export function bootPresenter(): void {
     $('.pv-of').textContent = `/ ${parsed.slides.length}`;
     const cur = slides[index].cloneNode(true) as HTMLElement;
     mount($('.pv-current'), cur, parsed.settings);
-    if (index !== timerIndex) {
+    const arrived = index !== timerIndex;
+    if (arrived) {
       timerIndex = index;
       timerStart = performance.now();
     }
-    stopTimers();
-    stopTimers = startTimers(cur, timerStart);
+    stopActive();
+    const at = index;
+    stopActive = activate(cur, {
+      start: timerStart,
+      animate: arrived,
+      // The fullscreen Stage, when it's open, moves first and tells us; only move if it didn't
+      onDone: () => setTimeout(() => index === at && show(at + 1, true), 900),
+      // Webviews only go live on the audience's screen
+      web: 'off',
+    });
     const next = slides[index + 1];
     const nextFrame = $('.pv-next');
     if (next) mount(nextFrame, next.cloneNode(true) as HTMLElement, parsed.settings);

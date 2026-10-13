@@ -35,8 +35,8 @@ import './styles/app.css';
 import './styles/slide.css';
 import type { EditorView } from '@codemirror/view';
 import { createEditor, getParsed, revealSlide, setText, markOverflow } from './editor';
-import { serializeFrontMatter, type ParsedDoc, type Settings, type SlideSource } from './parser';
-import { renderSlide, fit, mount, renderNotes, numberSections, ASPECTS } from './render';
+import { serializeFrontMatter, renderKey, type ParsedDoc, type Settings, type SlideSource } from './parser';
+import { renderSlide, fit, mount, renderNotes, numberSections, sectionList, isAgenda, ASPECTS, type SectionEntry } from './render';
 import { Inspector } from './inspector';
 import { Guide } from './guide';
 import { injectThemeCSS, getTheme } from './themes';
@@ -156,23 +156,28 @@ async function boot() {
   // Slides are cached by their content + settings, so typing on slide 7
   // re-renders only slide 7. Changing a setting changes every key, so a theme
   // switch re-renders everything.
-  const keyFor = (s: SlideSource, p: ParsedDoc) =>
-    JSON.stringify([s.visibleMd, s.layoutHint, s.look, s.imageFit, s.chart, s.timer, s.index, p.title, p.settings]);
+  // Agendas also depend on the deck's section titles.
+  const keyFor = (s: SlideSource, p: ParsedDoc, sections?: SectionEntry[]) => JSON.stringify([renderKey(s), p.title, p.settings, sections ?? null]);
+  let sections: SectionEntry[] = [];
 
   function renderAll() {
     parsed = getParsed(view);
     const opts = { settings: parsed.settings, deckTitle: parsed.title, total: parsed.slides.length };
     const nextCache = new Map<string, HTMLElement>();
-    slides = parsed.slides.map((s) => {
-      const key = keyFor(s, parsed);
+    const make = (s: SlideSource, secs?: SectionEntry[]) => {
+      const key = keyFor(s, parsed, secs);
       let node = cache.get(key);
       if (!node) {
-        node = renderSlide(s, opts);
+        node = renderSlide(s, { ...opts, sections: secs });
         fit(node);
       }
       nextCache.set(key, node);
       return node;
-    });
+    };
+    // Agendas list the section slides, so they're made last
+    const first = parsed.slides.map((s) => (isAgenda(s) ? null : make(s)));
+    sections = sectionList(first);
+    slides = first.map((n, i) => n ?? make(parsed.slides[i], sections));
     numberSections(slides);
     markOverflow(view, slides.flatMap((n, i) => (n.dataset.overflow ? [i] : [])));
     cache.clear();
@@ -702,6 +707,7 @@ async function boot() {
     slide: () => parsed.slides[current],
     deckTitle: () => parsed.title,
     total: () => slides.length,
+    sections: () => sections,
     current: () => current,
     update: (patch) => updateSettings(patch),
     setLayout: (layout) => setLayoutHint(layout),
@@ -763,6 +769,7 @@ async function boot() {
 
   function present(from = current) {
     if (!slides.length) return;
+    stage.askWeb = sharedMode;
     stage.open(slides, parsed.settings, from);
   }
 

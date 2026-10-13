@@ -119,8 +119,35 @@ export interface SlideSource {
   imageFit?: 'contain' | 'cover';
   /** `// chart: bar` or `line`: the slide's table is drawn as a chart */
   chart?: 'bar' | 'line';
-  /** `// timer: 5:00`: a countdown, in seconds */
-  timer?: number;
+  /** `// timer: 5:00 ring next`: a countdown (see Timer) */
+  timer?: Timer;
+  /** `// count` or `// count: roll`: figures count up when the slide is shown */
+  count?: 'count' | 'roll';
+  /** `// number: ring` or `bar`: a percentage drawn as a meter */
+  meter?: 'ring' | 'bar';
+  /** `// web: https://…`: a live web page, shown when presenting */
+  web?: string;
+  /** `// focus: 2` or `2,4-5`: these steps stay bright, the rest fade (1-based) */
+  focus?: number[];
+}
+
+/**
+ * `// timer: 5:00`, `// timer: 90` (seconds), `// timer: 5 min` or
+ * `// timer: until 14:45`, plus any of `ring`, `bar` (the visual) and `next`
+ * (go to the next slide at 0:00).
+ */
+export interface Timer {
+  /** A duration in seconds */
+  seconds?: number;
+  /** Or a clock time to count down to, in minutes after midnight */
+  until?: number;
+  style: 'digits' | 'ring' | 'bar';
+  next: boolean;
+}
+
+/** Everything about a slide that changes how it renders: the cache key. */
+export function renderKey(s: SlideSource): string {
+  return JSON.stringify([s.visibleMd, s.layoutHint, s.look, s.imageFit, s.chart, s.timer, s.count, s.meter, s.web, s.focus, s.index]);
 }
 
 export interface ParsedDoc {
@@ -147,9 +174,52 @@ const RE_LAYOUT = /^\s*\/\/\s*layout\s*:\s*([\w-]+)/i;
 const RE_LOOK = /^\s*\/\/\s*(dark|light|invert)\s*$/i;
 const RE_IMAGE_FIT = /^\s*\/\/\s*image\s*:\s*(contain|cover)\s*$/i;
 const RE_CHART = /^\s*\/\/\s*chart\s*:\s*(bar|column|line)\s*$/i;
-/** `// timer: 5:00`, `// timer: 90` (seconds) or `// timer: 5 min` */
-const RE_TIMER = /^\s*\/\/\s*timer\s*:\s*(\d{1,3})(?::(\d{1,2})|\s*(m|min|minutes?))?\s*$/i;
+const RE_TIMER = /^\s*\/\/\s*timer\s*:\s*(.+?)\s*$/i;
+const RE_COUNT = /^\s*\/\/\s*count(?:\s*:\s*(up|count|roll))?\s*$/i;
+const RE_METER = /^\s*\/\/\s*number\s*:\s*(ring|bar)\s*$/i;
+const RE_WEB = /^\s*\/\/\s*web\s*:\s*(\S+)\s*$/i;
+const RE_FOCUS = /^\s*\/\/\s*focus\s*:\s*([\d\s,–-]+)$/i;
 const RE_FM_LINE = /^\s*([\w-]+)\s*:\s*(.*?)\s*$/;
+
+/** The text after `// timer:`. Unknown words make it not a timer. */
+export function parseTimer(text: string): Timer | undefined {
+  const t: Timer = { style: 'digits', next: false };
+  const rest = text
+    .toLowerCase()
+    .replace(/\b(ring|bar|next)\b/g, (w) => {
+      if (w === 'next') t.next = true;
+      else t.style = w as Timer['style'];
+      return ' ';
+    })
+    .trim();
+  const until = /^until\s+(\d{1,2})(?:[:.](\d{2}))?\s*(am|pm)?$/.exec(rest);
+  if (until) {
+    let h = Number(until[1]);
+    const m = Number(until[2] ?? 0);
+    if (until[3] === 'pm' && h < 12) h += 12;
+    if (until[3] === 'am' && h === 12) h = 0;
+    if (h > 23 || m > 59) return undefined;
+    t.until = h * 60 + m;
+    return t;
+  }
+  const d = /^(\d{1,3})(?::(\d{1,2})|\s*(m|min|mins|minutes?))?$/.exec(rest);
+  if (!d) return undefined;
+  t.seconds = d[2] !== undefined ? Number(d[1]) * 60 + Number(d[2]) : d[3] ? Number(d[1]) * 60 : Number(d[1]);
+  return t.seconds > 0 ? t : undefined;
+}
+
+/** `2`, `2,4` or `2-4` → [2], [2, 4], [2, 3, 4] */
+function parseFocus(text: string): number[] | undefined {
+  const out = new Set<number>();
+  for (const part of text.split(',')) {
+    const m = /^\s*(\d{1,2})\s*(?:[–-]\s*(\d{1,2}))?\s*$/.exec(part);
+    if (!m) continue;
+    const a = Number(m[1]);
+    const b = Math.min(Number(m[2] ?? a), a + 20);
+    for (let i = a; i <= b; i++) if (i > 0) out.add(i);
+  }
+  return out.size ? [...out].sort((x, y) => x - y) : undefined;
+}
 
 function parseFrontMatter(lines: string[]): { end: number; values: Record<string, string> } | null {
   if (lines.length < 2 || !RE_SEPARATOR.test(lines[0])) return null;
@@ -259,6 +329,10 @@ export function parse(text: string): ParsedDoc {
   let imageFit: SlideSource['imageFit'];
   let chart: SlideSource['chart'];
   let timer: SlideSource['timer'];
+  let count: SlideSource['count'];
+  let meter: SlideSource['meter'];
+  let web: SlideSource['web'];
+  let focus: SlideSource['focus'];
   let slideStart = start;
   let fence: { marker: string; visible: boolean } | null = null;
 
@@ -284,6 +358,10 @@ export function parse(text: string): ParsedDoc {
       imageFit,
       chart,
       timer,
+      count,
+      meter,
+      web,
+      focus,
     });
     visible = [];
     notes = [];
@@ -294,6 +372,10 @@ export function parse(text: string): ParsedDoc {
     imageFit = undefined;
     chart = undefined;
     timer = undefined;
+    count = undefined;
+    meter = undefined;
+    web = undefined;
+    focus = undefined;
   };
 
   for (let i = start; i < lines.length; i++) {
@@ -336,7 +418,15 @@ export function parse(text: string): ParsedDoc {
       const ch = RE_CHART.exec(raw);
       if (ch) chart = ch[1].toLowerCase() === 'line' ? 'line' : 'bar';
       const tm = RE_TIMER.exec(raw);
-      if (tm) timer = tm[2] !== undefined ? Number(tm[1]) * 60 + Number(tm[2]) : tm[3] ? Number(tm[1]) * 60 : Number(tm[1]);
+      if (tm) timer = parseTimer(tm[1]) ?? timer;
+      const co = RE_COUNT.exec(raw);
+      if (co) count = co[1]?.toLowerCase() === 'roll' ? 'roll' : 'count';
+      const me = RE_METER.exec(raw);
+      if (me) meter = me[1].toLowerCase() as SlideSource['meter'];
+      const we = RE_WEB.exec(raw);
+      if (we) web = we[1];
+      const fo = RE_FOCUS.exec(raw);
+      if (fo) focus = parseFocus(fo[1]);
       continue;
     }
 

@@ -85,9 +85,24 @@ Every slide is laid out at a fixed logical size (1920 × 1080 for 16:9) and scal
 | one short tabbed paragraph | statement |
 | a tabbed `>` quote | quote |
 | text + image(s) | split |
-| repeated subheadings | columns (or `// layout: timeline`) |
+| repeated subheadings | columns (or `// layout: timeline` / `cycle`) |
+| a title that is only a figure | number |
 | several images | gallery |
 | one image alone | full |
+| `// web: https://…` | web |
+| `// layout: agenda` | agenda (the deck's section slides) |
+
+**Agendas are made last.** They list the deck's section slides, so `renderDeck()` (and `renderAll()` in `main.ts`) first render every other slide, collect the sections with `sectionList()`, then render the agendas with `opts.sections`. An agenda's cache key includes that list, so renaming a section re-renders the agendas.
+
+### What runs while presenting: `activate()`
+
+Rendered slides are still: final numbers, a full timer ring, a placeholder card for a web page. That's what the preview, the strip, the overview, the theme previews and print show. When a slide is actually presented, the Stage (`present.ts`) and the presenter window (`presenter.ts`) call `activate(slide, opts)` on their copy, which returns a function that stops everything again:
+
+- **Timers** tick (digits four times a second; rings and bars every frame). `start` carries a timer through edits; `onDone` fires when a `next` timer that was running reaches zero. The Stage moves on at once; the presenter window waits 0.9 s and only moves if nothing else did, so the deck never skips two slides.
+- **Count-ups** (`// count`, `// count: roll`) play when `animate` is true: when a slide arrives, not when an edit re-renders it.
+- **Web pages** load only on the Stage (`web: 'live'`, or `'ask'` for decks from a shared link). The frame is sandboxed, gets no referrer (YouTube gets Cue's origin only, or it won't play) and sits behind a shield so clicks and keys still move the slides; `I` lifts the shield.
+
+`prefers-reduced-motion` turns off count-ups and the smooth ring and bar movement.
 
 ## How styling is layered
 
@@ -153,8 +168,10 @@ Before publishing, the workflow runs a **smoke test** (`npm run smoke`, `scripts
 | `src/parser.ts` | Text → slides: which lines show, which are notes, front matter → settings. |
 | `src/markdown.ts` | The markdown dialect (markdown-it + highlight, sup/sub, footnotes, math, tasks, callouts, code fences…). |
 | `src/highlight.ts` | Syntax colors for code (Lezer parsers). Loaded on demand, only when a deck has code in a known language. |
-| `src/render.ts` | Slide DOM, autolayout, fit-to-slide (shrink, grow, figures, code, hanging punctuation), header/footer slots, timers, scaling. |
+| `src/render.ts` | Slide DOM, autolayout, fit-to-slide (shrink, grow, figures, code, hanging punctuation), header/footer slots, timers, big numbers, agendas, webview placeholders, scaling, and `activate()` (what runs while presenting). |
 | `src/chart.ts` | `// chart: bar` / `line`: a slide's table drawn as SVG. |
+| `src/cycle.ts` | `// layout: cycle`: the loop's geometry in slide pixels, drawn as SVG, with HTML labels around it. |
+| `src/web.ts` | `// web:`: which addresses are allowed, embed links for video and design services, the sandboxed frame. |
 | `src/complete.ts` | Editor autocomplete: front matter, `//` directives, fence languages, callouts. |
 | `src/guide.ts` | The Markdown guide panel, with examples that insert at the cursor. |
 | `src/themes.ts` | Every theme as data, compiled to CSS variables. |
@@ -187,7 +204,7 @@ Before publishing, the workflow runs a **smoke test** (`npm run smoke`, `scripts
 
 **Add markdown syntax.** Add a markdown-it plugin or rule in `markdown.ts`, and style its output in `slide.css`. Add an example to `guide.ts`, and a suggestion to `complete.ts` if it has something to remember.
 
-**Add a slide directive** (like `// timer:`). Add a regex next to `RE_LAYOUT` in `parser.ts`, store it on `SlideSource`, use it in `renderSlide()`, and add it to the slide cache keys in `main.ts` (`keyFor`) and `inspector.ts` (`syncThumbs`), or edits to it won't re-render.
+**Add a slide directive** (like `// timer:`). Add a regex next to `RE_LAYOUT` in `parser.ts`, store it on `SlideSource`, add it to `renderKey()` in `parser.ts` (the cache key `main.ts` and `inspector.ts` both use, or edits to it won't re-render), and use it in `renderSlide()`. If it moves while presenting, start it in `activate()`.
 
 **Add a code language.** `npm install @lezer/<language>`, then add its fence names to `PARSERS` in `highlight.ts`.
 

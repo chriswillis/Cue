@@ -29,6 +29,8 @@ const CSP = [
   "img-src 'self' https: data: blob:",
   "font-src 'self' data:",
   "connect-src 'self'",
+  // `// web:` slides frame https pages (sandboxed, and only while presenting)
+  "frame-src https:",
   "object-src 'none'",
   "base-uri 'none'",
   "form-action 'none'",

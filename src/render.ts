@@ -4,6 +4,8 @@ import { getTheme, stepVars, labelVars, type Palette } from './themes';
 import { getTypeface } from './typefaces';
 import { resolveColor } from './flexoki';
 import { chartSVG } from './chart';
+import { cycleDiagram, cycleStyle, CYCLE_MAX } from './cycle';
+import { webTarget, webFrame } from './web';
 
 /**
  * Slide rendering + autolayout.
@@ -48,9 +50,14 @@ export type Layout =
   | 'timeline'
   | 'gallery'
   | 'full'
+  | 'number'
+  | 'cycle'
+  | 'agenda'
+  | 'web'
   | 'blank';
 
-export const LAYOUTS: Layout[] = ['cover', 'section', 'content', 'statement', 'quote', 'split', 'columns', 'timeline', 'gallery', 'full'];
+/** Layouts people can pick with `// layout:` (web comes from `// web:`, blank from nothing). */
+export const LAYOUTS: Layout[] = ['cover', 'section', 'content', 'statement', 'quote', 'split', 'columns', 'timeline', 'cycle', 'number', 'agenda', 'gallery', 'full'];
 
 export const ASPECTS: Record<Settings['aspect'], { w: number; h: number }> = {
   '16:9': { w: 1920, h: 1080 },
@@ -145,22 +152,101 @@ function extractLabels(blocks: Block[]): { blocks: Block[]; foot: HTMLElement[] 
 /** A block's elements, with its kicker first. */
 const withKicker = (b: Block): HTMLElement[] => (b.kicker ? [b.kicker, b.el] : [b.el]);
 
+/* ------------------------------------------------------------------ */
+/* Figures: "$4.2M", "118%", "1,200"                                    */
+/* ------------------------------------------------------------------ */
+
+interface Figure {
+  prefix: string;
+  /** The number as written: "4.2", "1,200" */
+  num: string;
+  suffix: string;
+  value: number;
+  decimals: number;
+  /** Thousands separator ("," or "." or none) and decimal mark, as written */
+  group: string;
+  dec: string;
+}
+
+/** "$4.2M" → prefix "$", 4.2, suffix "M". Letters before the number (Q1, H2) make it a label, not a figure. */
+function parseFigure(text: string): Figure | null {
+  const m = /^([^\p{L}\d\s.,-]*)(-?[\d.,]*\d)(\D*)$/u.exec(text.trim());
+  if (!m) return null;
+  const ns = m[2];
+  const dot = ns.lastIndexOf('.');
+  const comma = ns.lastIndexOf(',');
+  let dec = '.';
+  let group = '';
+  if (dot >= 0 && comma >= 0) {
+    dec = dot > comma ? '.' : ',';
+    group = dec === '.' ? ',' : '.';
+  } else if (comma >= 0) {
+    if (/^-?\d{1,3}(,\d{3})+$/.test(ns)) group = ',';
+    else dec = ',';
+  } else if (/^-?\d{1,3}(\.\d{3}){2,}$/.test(ns)) {
+    group = '.';
+    dec = ',';
+  }
+  const norm = (group ? ns.split(group).join('') : ns).replace(dec, '.');
+  const value = Number(norm);
+  if (!Number.isFinite(value)) return null;
+  return { prefix: m[1], num: ns, suffix: m[3], value, decimals: norm.includes('.') ? norm.split('.')[1].length : 0, group, dec };
+}
+
+/** A number written the same way as `f`: same decimals, separators. */
+function formatLike(v: number, f: Pick<Figure, 'decimals' | 'group' | 'dec'>): string {
+  const [int, frac] = Math.abs(v).toFixed(f.decimals).split('.');
+  const grouped = f.group ? int.replace(/\B(?=(\d{3})+(?!\d))/g, f.group) : int;
+  return `${v < 0 && Number(Math.abs(v).toFixed(f.decimals)) !== 0 ? '-' : ''}${grouped}${frac ? f.dec + frac : ''}`;
+}
+
+/** A title that is just a figure, short and without spaces: "$4.2M", "118%", "3×". */
+function isFigure(text: string): boolean {
+  const f = text.length <= 12 && !/\s/.test(text) ? parseFigure(text) : null;
+  return !!f && f.prefix.length <= 3 && f.suffix.length <= 4;
+}
+
+/** "$2.9M → $4.2M": a figure that grew (or shrank). */
+function growthOf(text: string): [Figure, Figure] | null {
+  const m = /^(\S+)\s*(?:→|->|⟶|–>|—>)\s*(\S+)$/.exec(text.trim());
+  if (!m || !isFigure(m[1]) || !isFigure(m[2])) return null;
+  return [parseFigure(m[1])!, parseFigure(m[2])!];
+}
+
 /**
  * Big figures: set the unit or symbol smaller than the number, so "$4.2M"
- * reads as a number with a unit. Only plain-text heads are touched.
+ * reads as a number with a unit, and wrap the number so `// count` can run it.
+ * Only plain-text heads are touched.
  */
-function splitUnits(h: HTMLElement): void {
-  if (h.children.length) return;
-  // Letters before the number (Q1, H2) are part of the label, not a unit
-  const m = /^([^\p{L}\d\s.,-]*)(-?[\d.,]*\d)(\D*)$/u.exec(h.textContent?.trim() ?? '');
-  if (!m || (!m[1] && !m[3])) return;
-  const unit = (text: string, cls: string) => {
-    const span = document.createElement('span');
-    span.className = `s-unit ${cls}`;
-    span.textContent = text;
-    return span;
+function splitUnits(h: HTMLElement, from?: Figure): Figure | null {
+  if (h.children.length) return null;
+  const f = parseFigure(h.textContent ?? '');
+  if (!f) return null;
+  const span = (text: string, cls: string) => {
+    const e = document.createElement('span');
+    e.className = cls;
+    e.textContent = text;
+    return e;
   };
-  h.replaceChildren(...[m[1] && unit(m[1], 'is-prefix'), m[2], m[3] && unit(m[3], 'is-suffix')].filter((x): x is string | HTMLElement => !!x));
+  const num = span(f.num, 's-num');
+  Object.assign(num.dataset, { value: String(f.value), decimals: String(f.decimals), group: f.group, dec: f.dec });
+  if (from) num.dataset.from = String(from.value);
+  h.replaceChildren(...[f.prefix && span(f.prefix, 's-unit is-prefix'), num, f.suffix && span(f.suffix, 's-unit is-suffix')].filter((x): x is HTMLElement => !!x));
+  return f;
+}
+
+/** How full a meter is, 0..1, for a figure: a percentage, or a fraction already. */
+function meterValue(f: Figure | null): number | null {
+  if (!f) return null;
+  if (f.suffix.includes('%')) return Math.max(0, Math.min(1, f.value / 100));
+  return f.value >= 0 && f.value <= 1 && !f.suffix ? f.value : null;
+}
+
+/** A ring drawn as two circles; --p (0..1) is how much of it is filled. */
+function ringSVG(cls: string): HTMLElement {
+  const tpl = document.createElement('template');
+  tpl.innerHTML = `<svg class="${cls}" viewBox="0 0 100 100" aria-hidden="true"><circle class="m-track" cx="50" cy="50" r="46"/><circle class="m-fill" cx="50" cy="50" r="46" pathLength="1"/></svg>`;
+  return tpl.content.firstElementChild as HTMLElement;
 }
 
 /** Opening punctuation that should hang in the margin. */
@@ -286,16 +372,30 @@ function textLength(els: HTMLElement[]): number {
   return els.reduce((n, e) => n + (e.textContent?.length ?? 0), 0);
 }
 
-function chooseLayout(a: Analysis, hint: string | undefined, index: number): Layout {
-  if (hint === 'timeline' && a.sections.length < 2) hint = undefined; // needs repeated headings
+/** The title heading itself (a.title also holds its kicker and subtitle). */
+const titleOf = (a: Analysis) => a.title.find((e) => e.classList.contains('s-title')) ?? null;
+
+function chooseLayout(a: Analysis, src: SlideSource): Layout {
+  let hint = src.layoutHint;
+  if (src.web) return 'web';
+  if ((hint === 'timeline' || hint === 'cycle') && a.sections.length < 2) hint = undefined; // needs repeated headings
+  if (hint === 'cycle' && a.sections.length > CYCLE_MAX) hint = 'columns';
+  if (hint === 'number' && !a.title.length) hint = undefined;
   if (hint && (LAYOUTS as string[]).includes(hint)) return hint as Layout;
   const hasTitle = a.title.length > 0;
   const nImg = a.images.length;
   const nText = a.text.length + a.intro.length;
 
   if (a.sections.length >= 2) return 'columns';
+  // A title that is only a figure ("$4.2M", "38% → 52%") is a big number,
+  // except a lone year ("## 2026"), which reads as a section
+  const t = titleOf(a)?.textContent?.trim() ?? '';
+  if (hasTitle && !nImg && !a.sections.length && (isFigure(t) || growthOf(t)) && a.text.every((e) => e.tagName === 'P') && textLength(a.text) < 200) {
+    const alone = !nText && a.title.length === 1 && !src.count && !src.meter;
+    if (!(alone && /^\d{4}$/.test(t))) return 'number';
+  }
   if (!hasTitle && !nText && !nImg) return 'blank';
-  if (!nText && !nImg) return a.titleLevel === 1 || index === 0 ? 'cover' : 'section';
+  if (!nText && !nImg) return a.titleLevel === 1 || src.index === 0 ? 'cover' : 'section';
   if (nImg && !hasTitle && !nText) return nImg === 1 ? 'full' : 'gallery';
   if (nImg >= 1 && !nText && hasTitle) return nImg === 1 ? 'split' : 'gallery';
   if (nImg >= 1) return 'split';
@@ -315,10 +415,18 @@ function el(tag: string, cls: string, children: (HTMLElement | null)[] = []): HT
   return e;
 }
 
+/** A section slide, for agendas: its title and where it is in the deck. */
+export interface SectionEntry {
+  title: string;
+  index: number;
+}
+
 export interface RenderOptions {
   settings: Settings;
   deckTitle: string;
   total: number;
+  /** The deck's section slides, for `// layout: agenda` */
+  sections?: SectionEntry[];
 }
 
 export function renderSlide(src: SlideSource, opts: RenderOptions): HTMLElement {
@@ -327,10 +435,11 @@ export function renderSlide(src: SlideSource, opts: RenderOptions): HTMLElement 
   const html = md.render(prepare(src.visibleMd));
   const { blocks, foot } = extractLabels(toBlocks(html));
   const a = analyze(blocks);
-  let layout = chooseLayout(a, src.layoutHint, src.index);
+  let layout = chooseLayout(a, src);
   // A timer alone is a statement-sized countdown
   if (src.timer && layout === 'blank') layout = 'statement';
   const portrait = size.h > size.w;
+  const tooMany = src.layoutHint === 'cycle' && a.sections.length > CYCLE_MAX;
 
   // `// dark`, `// light` or `// invert` flips this one slide
   const flipped = settings.appearance === 'dark' ? 'light' : 'dark';
@@ -349,6 +458,8 @@ export function renderSlide(src: SlideSource, opts: RenderOptions): HTMLElement 
     src.imageFit === 'contain' && 'img-contain',
     (settings.align ?? theme.titleAlign) === 'center' && 'align-center',
     theme.headlineScale === 'uniform' && 'scale-uniform',
+    tooMany && 'is-crowded',
+    src.focus && 'has-focus',
   ].filter(Boolean);
   const slide = el('section', classes.join(' '));
   slide.style.width = `${size.w}px`;
@@ -356,6 +467,7 @@ export function renderSlide(src: SlideSource, opts: RenderOptions): HTMLElement 
   applyLook(slide, look, src.index);
   slide.dataset.index = String(src.index);
   slide.dataset.layout = layout;
+  if (src.count) slide.dataset.count = src.count;
 
   const inner = el('div', 's-inner');
   slide.appendChild(inner);
@@ -366,6 +478,13 @@ export function renderSlide(src: SlideSource, opts: RenderOptions): HTMLElement 
     const m = el('div', `s-media n-${Math.min(imgs.length, 6)}`, imgs);
     return m;
   };
+  /** `// focus: 2`: is step i (0-based) one of the bright ones? */
+  const lit = (i: number) => !src.focus || src.focus.includes(i + 1);
+  // The text area, in slide pixels (for layouts drawn in JS: cycle, number rings)
+  const [mx, my] = theme.margin;
+  const innerW = size.w - mx * 2;
+  const innerH = size.h - my * 2;
+  const colW = (innerW - theme.gutter * 11) / 12;
 
   switch (layout) {
     case 'columns':
@@ -380,12 +499,149 @@ export function renderSlide(src: SlideSource, opts: RenderOptions): HTMLElement 
         cols.classList.add('is-figures');
         a.sections.forEach((s) => s.head && splitUnits(s.head));
       }
-      a.sections.forEach((s) => {
-        const sec = el('div', 's-section', [media(s.images), s.kicker, s.head, el('div', 's-section-body', s.body)]);
+      a.sections.forEach((s, i) => {
+        const sec = el('div', `s-section${lit(i) ? '' : ' is-dim'}`, [media(s.images), s.kicker, s.head, el('div', 's-section-body', s.body)]);
         cols.appendChild(sec);
       });
       inner.appendChild(cols);
       if (a.images.length) inner.appendChild(media(a.images)!);
+      break;
+    }
+    case 'cycle': {
+      // Landscape: title and intro on the left third, the loop beside them.
+      // Portrait, or no title: the loop takes the width.
+      const short = a.intro.length === 1 && a.intro[0].tagName === 'P' && textLength(a.intro) <= 48;
+      if (head) inner.appendChild(head);
+      if (a.intro.length && !short) inner.appendChild(el('div', 's-intro', a.intro));
+      const side = !portrait && (head || (a.intro.length && !short));
+      const box = side
+        ? { x: mx + 4 * (colW + theme.gutter), y: my, w: innerW - 4 * (colW + theme.gutter), h: innerH }
+        : portrait && head
+          ? { x: mx, y: Math.round(size.h * 0.3), w: innerW, h: Math.round(size.h * 0.7) - my }
+          : { x: mx, y: my, w: innerW, h: innerH };
+      slide.classList.toggle('has-side', !!side);
+      const steps = a.sections.map((s) => ({ head: s.head, kicker: s.kicker, body: s.body }));
+      slide.appendChild(cycleDiagram(steps, box, { style: cycleStyle(theme.id), base: theme.base, focus: src.focus, center: short ? a.intro : undefined }));
+      break;
+    }
+    case 'number': {
+      // One figure, as big as it fits. A kicker above, a caption below.
+      const title = titleOf(a);
+      const growth = title ? growthOf(title.textContent ?? '') : null;
+      let fig: Figure | null = null;
+      if (title) {
+        title.classList.add('s-number');
+        if (growth) title.textContent = `${growth[1].prefix}${growth[1].num}${growth[1].suffix}`;
+        fig = splitUnits(title, growth?.[0]);
+      }
+      const extra: HTMLElement[] = [];
+      if (growth) {
+        const [from, to] = growth;
+        const sameUnit = from.prefix === to.prefix && from.suffix === to.suffix;
+        let change = '';
+        if (sameUnit && to.suffix.includes('%')) {
+          const d = to.value - from.value;
+          change = `${d >= 0 ? '+' : '−'}${formatLike(Math.abs(d), to)} pts `;
+        } else if (sameUnit && from.value !== 0) {
+          const pct = ((to.value - from.value) / Math.abs(from.value)) * 100;
+          change = `${pct >= 0 ? '+' : '−'}${Math.abs(pct) >= 10 ? Math.round(Math.abs(pct)) : Math.abs(pct).toFixed(1)}% `;
+        }
+        const p = el('p', `s-number-from ${to.value >= from.value ? 'is-up' : 'is-down'}`);
+        p.textContent = `${change}from ${from.prefix}${from.num}${from.suffix}`;
+        extra.push(p);
+      }
+      const p = src.meter ? meterValue(fig) : null;
+      const body = a.text.length ? el('div', 's-body', a.text) : null;
+      if (p !== null && src.meter === 'ring' && title) {
+        const d = Math.round(Math.min(innerH * 0.86, innerW * (portrait ? 0.92 : 0.46)));
+        const ring = el('div', 's-meter is-ring', [ringSVG('s-meter-svg'), title]);
+        ring.style.setProperty('--d', `${d}px`);
+        ring.style.setProperty('--p', p.toFixed(4));
+        ring.dataset.p = String(p);
+        const rest = a.title.filter((e) => e !== title);
+        inner.append(ring, el('div', 's-number-text', [...rest, ...extra, body]));
+        slide.classList.add('has-ring');
+      } else {
+        if (head) inner.appendChild(head);
+        inner.append(...extra);
+        if (p !== null) {
+          const bar = el('div', 's-meter is-bar', [el('div', 'm-fill')]);
+          bar.style.setProperty('--p', p.toFixed(4));
+          bar.dataset.p = String(p);
+          inner.appendChild(bar);
+        }
+        if (body) inner.appendChild(body);
+      }
+      break;
+    }
+    case 'agenda': {
+      if (head) inner.appendChild(head);
+      // Your own list wins; otherwise the deck's section slides
+      const list = a.text.find((e) => /^[OU]L$/.test(e.tagName));
+      const own = list ? (Array.from(list.children) as HTMLElement[]).map((li) => li.innerHTML) : null;
+      const sections = opts.sections ?? [];
+      const items = own ?? sections.map((s) => escapeHTML(s.title));
+      const others = a.text.filter((e) => e !== list);
+      if (others.length) inner.appendChild(el('div', 's-intro', others));
+      // Where are we? The next section after this slide is current; the ones before it are done.
+      // An agenda before every section (the opening one) or after all of them highlights nothing.
+      let current = -1;
+      if (src.focus) current = src.focus[0] - 1;
+      else if (!own) {
+        const before = sections.filter((s) => s.index < src.index).length;
+        if (before > 0 && before < sections.length) current = before;
+      }
+      if (items.length) {
+        const ol = el('ol', `s-agenda n-${Math.min(items.length, 12)}${items.length > 6 ? ' is-long' : ''}${current >= 0 ? ' has-current' : ''}`);
+        items.forEach((html, i) => {
+          const li = el('li', `s-agenda-item${i === current ? ' is-current' : ''}${current >= 0 && i < current ? ' is-done' : ''}`);
+          li.innerHTML = `<span class="s-agenda-num">${String(i + 1).padStart(2, '0')}</span><span class="s-agenda-title">${html}</span>`;
+          ol.appendChild(li);
+        });
+        inner.appendChild(ol);
+      } else {
+        const p = el('p', 's-agenda-empty');
+        p.textContent = 'Section slides (a heading on its own) are listed here.';
+        inner.appendChild(p);
+      }
+      break;
+    }
+    case 'web': {
+      const target = src.web ? webTarget(src.web) : null;
+      const frame = el('div', 's-web');
+      const poster = a.images[0]?.querySelector('img');
+      if (poster) frame.appendChild(el('div', 's-web-poster', [poster]));
+      const card = el('div', 's-web-card');
+      const host = el('div', 's-web-host');
+      const note = el('p', 's-web-note');
+      if (target) {
+        Object.assign(frame.dataset, { src: target.src, host: target.host });
+        if (target.isolate) frame.dataset.isolate = '1';
+        host.textContent = target.host;
+        note.textContent = 'Live when presenting';
+        const open = document.createElement('a');
+        open.className = 's-web-open';
+        open.href = target.url;
+        open.textContent = 'Open in new tab ↗';
+        card.append(host, note, open);
+      } else {
+        host.textContent = 'No page to show';
+        note.textContent = 'Use a full address starting with https://';
+        card.append(host, note);
+      }
+      frame.appendChild(card);
+      const text = [...a.intro, ...a.text];
+      if (!head && !text.length) {
+        slide.classList.add('is-bleed');
+        slide.insertBefore(frame, inner);
+      } else {
+        if (head) inner.appendChild(head);
+        if (text.length) inner.appendChild(el('div', 's-body', text));
+        const bar = el('div', 's-web-bar');
+        bar.textContent = target?.host ?? '';
+        frame.prepend(bar);
+        inner.appendChild(frame);
+      }
       break;
     }
     case 'split': {
@@ -431,16 +687,10 @@ export function renderSlide(src: SlideSource, opts: RenderOptions): HTMLElement 
   }
 
   if (src.chart) drawChart(inner, src.chart, size.w - theme.margin[0] * 2, Math.round(size.h * (portrait ? 0.34 : 0.5)), Math.round(Math.max(22, theme.base * 0.6)));
-  if (src.timer) {
-    const t = el('div', 's-timer');
-    t.dataset.seconds = String(src.timer);
-    t.textContent = formatTimer(src.timer);
-    (inner.querySelector('.s-body') ?? inner).appendChild(t);
-    slide.classList.add('has-timer');
-  }
+  if (src.timer) addTimer(slide, inner, src.timer, layout, innerH);
 
   if (foot.length) {
-    const target = slide.querySelector<HTMLElement>('.s-text, .s-overlay') ?? inner;
+    const target = slide.querySelector<HTMLElement>('.s-text, .s-overlay, .s-number-text') ?? inner;
     target.appendChild(el('footer', 's-footnotes', foot));
   }
 
@@ -454,7 +704,7 @@ export function renderSlide(src: SlideSource, opts: RenderOptions): HTMLElement 
     if (last && /^[—–-]\s?/.test(last.textContent ?? '')) last.classList.add('s-cite');
   }
 
-  if (layout !== 'cover' && layout !== 'full') {
+  if (layout !== 'cover' && layout !== 'full' && !slide.classList.contains('is-bleed')) {
     const ctx = { title: settings.short || opts.deckTitle, index: src.index, total: opts.total };
     const header = chrome('s-header', settings.header ?? theme.header, ctx);
     const footer = chrome('s-foot', settings.footer ?? theme.footer, ctx);
@@ -469,6 +719,59 @@ export function renderSlide(src: SlideSource, opts: RenderOptions): HTMLElement 
   });
 
   return slide;
+}
+
+const escapeHTML = (s: string) => s.replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]!);
+
+/** Layouts where a timer is the point of the slide; elsewhere a bar timer keeps quiet. */
+const TIMER_SLIDES = new Set(['statement', 'section', 'cover', 'blank']);
+
+/**
+ * `// timer:` digits, plus a ring around them or a bar along the bottom edge.
+ * On a slide with other content, a bar timer sets its digits small, beside the bar.
+ */
+function addTimer(slide: HTMLElement, inner: HTMLElement, timer: NonNullable<SlideSource['timer']>, layout: Layout, innerH: number): void {
+  const t = el('div', `s-timer is-${timer.style}`);
+  const seconds = timer.until !== undefined ? secondsUntil(timer.until) : timer.seconds!;
+  if (timer.until !== undefined) t.dataset.until = String(timer.until);
+  else t.dataset.seconds = String(timer.seconds);
+  if (timer.next) t.dataset.next = '1';
+  const digits = el('span', 's-timer-digits');
+  digits.textContent = formatTimer(seconds);
+  t.appendChild(digits);
+  slide.classList.add('has-timer');
+  if (timer.style === 'ring') {
+    t.prepend(ringSVG('s-timer-ring'));
+    t.style.setProperty('--p', '1');
+    // Alone, the ring is the slide; with a title or text, it sits beside them (below, in portrait)
+    const alone = !inner.children.length;
+    const portrait = slide.classList.contains('is-portrait');
+    const width = parseFloat(slide.style.width);
+    t.style.setProperty('--d', `${Math.round(alone ? innerH * 0.86 : portrait ? width * 0.62 : Math.min(innerH * 0.8, width * 0.4))}px`);
+    slide.classList.add(alone ? 'timer-alone' : 'timer-beside');
+    inner.appendChild(t);
+    return;
+  }
+  if (timer.style === 'bar') {
+    const bar = el('div', 's-timer-bar', [el('div', 'm-fill')]);
+    bar.style.setProperty('--p', '1');
+    slide.appendChild(bar);
+    if (!TIMER_SLIDES.has(layout)) {
+      t.classList.add('is-quiet');
+      slide.appendChild(t);
+      return;
+    }
+  }
+  (inner.querySelector('.s-body') ?? inner).appendChild(t);
+}
+
+/** Seconds from now until a clock time (minutes after midnight); a time long gone means tomorrow. */
+function secondsUntil(minutes: number, now = new Date()): number {
+  const at = new Date(now);
+  at.setHours(Math.floor(minutes / 60), minutes % 60, 0, 0);
+  let s = (at.getTime() - now.getTime()) / 1000;
+  if (s < -12 * 3600) s += 24 * 3600;
+  return Math.max(0, s);
 }
 
 /** The first table on the slide becomes a chart; its caption stays above it. */
@@ -499,24 +802,213 @@ export function formatTimer(seconds: number): string {
   return h ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`;
 }
 
+/* ------------------------------------------------------------------ */
+/* Activate: what runs only while a slide is presented                 */
+/* ------------------------------------------------------------------ */
+
+export interface ActivateOptions {
+  /** When the slide was first shown (performance.now()); timers carry on from there through edits */
+  start?: number;
+  /** Play entrance motion (`// count`). Off when the same slide is only re-rendered. */
+  animate?: boolean;
+  /** A `// timer: … next` reached zero */
+  onDone?: () => void;
+  /** Webviews: load the page, ask first (shared decks), or keep the placeholder */
+  web?: 'live' | 'ask' | 'off';
+}
+
 /**
- * Run the countdown on a slide that is being shown (fullscreen or presenter
- * window). `start` lets a re-rendered slide carry on where it was.
- * Returns a function that stops it.
+ * Everything on a slide that moves runs from here, and only on the slide
+ * being presented (the Stage and the presenter window's current slide).
+ * Every other copy (preview, strip, overview, theme previews, print) keeps
+ * the still end state: final numbers, full rings, webview placeholders.
+ * Returns a function that stops it all.
  */
-export function startTimers(slide: HTMLElement, start = performance.now()): () => void {
+export function activate(slide: HTMLElement, opts: ActivateOptions = {}): () => void {
+  const stops: (() => void)[] = [];
+  const still = reducedMotion();
+  stops.push(runTimers(slide, opts.start ?? performance.now(), opts.onDone));
+  if (opts.animate && !still && slide.dataset.count) stops.push(runCount(slide, slide.dataset.count as 'count' | 'roll'));
+  if (opts.web && opts.web !== 'off') hydrateWeb(slide, opts.web === 'ask');
+  return () => stops.forEach((s) => s());
+}
+
+const reducedMotion = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/**
+ * Countdowns. Digits tick four times a second; rings and bars move every
+ * frame. A timer that was running when its slide came up can advance the
+ * deck at zero (`next`); one that was already at zero never does, so you
+ * can always go back to it.
+ */
+function runTimers(slide: HTMLElement, start: number, onDone?: () => void): () => void {
   const timers = Array.from(slide.querySelectorAll<HTMLElement>('.s-timer'));
   if (!timers.length) return () => {};
-  const tick = () => {
-    for (const t of timers) {
-      const left = Number(t.dataset.seconds) - (performance.now() - start) / 1000;
-      t.textContent = formatTimer(left);
-      t.classList.toggle('is-done', left <= 0);
+  const bar = slide.querySelector<HTMLElement>('.s-timer-bar');
+  // Wall-clock time of `start`, for "until 14:45"
+  const startWall = Date.now() - (performance.now() - start);
+  const state = timers.map((t) => {
+    const until = t.dataset.until;
+    const end = until !== undefined ? startWall + secondsUntil(Number(until), new Date(startWall)) * 1000 : startWall + Number(t.dataset.seconds) * 1000;
+    const total = Math.max(1, (end - startWall) / 1000);
+    const left0 = (end - Date.now()) / 1000;
+    return { t, end, total, armed: left0 > 0 && t.dataset.next === '1', digits: t.querySelector('.s-timer-digits') ?? t, shown: '' };
+  });
+  let doneTimer = 0;
+  const tick = (frame: boolean) => {
+    for (const s of state) {
+      const left = (s.end - Date.now()) / 1000;
+      const p = Math.max(0, Math.min(1, left / s.total)).toFixed(4);
+      s.t.style.setProperty('--p', p);
+      if (bar) bar.style.setProperty('--p', p);
+      if (frame) continue;
+      const text = formatTimer(left);
+      if (text !== s.shown) s.digits.textContent = s.shown = text;
+      s.t.classList.toggle('is-done', left <= 0);
+      if (left <= 0 && s.armed && onDone) {
+        s.armed = false;
+        // A moment on 0:00 before moving on
+        doneTimer = window.setTimeout(onDone, 600);
+      }
     }
   };
-  tick();
-  const id = window.setInterval(tick, 250);
-  return () => clearInterval(id);
+  tick(false);
+  const id = window.setInterval(() => tick(false), 250);
+  let raf = 0;
+  const smooth = !reducedMotion() && (bar || slide.querySelector('.s-timer-ring'));
+  const loop = () => {
+    tick(true);
+    raf = requestAnimationFrame(loop);
+  };
+  if (smooth) raf = requestAnimationFrame(loop);
+  return () => {
+    clearInterval(id);
+    cancelAnimationFrame(raf);
+    clearTimeout(doneTimer);
+  };
+}
+
+const COUNT_MS = 1600;
+const easeOut = (x: number) => 1 - Math.pow(1 - x, 4);
+
+/**
+ * `// count`: figures count up from zero (or from the first value of
+ * "$2.9M → $4.2M"), keeping their decimals and separators. Meters fill in step.
+ * `// count: roll`: each digit rolls into place like an odometer.
+ */
+function runCount(slide: HTMLElement, mode: 'count' | 'roll'): () => void {
+  const nums = Array.from(slide.querySelectorAll<HTMLElement>('.s-num[data-value]'));
+  const meters = Array.from(slide.querySelectorAll<HTMLElement>('.s-meter[data-p]'));
+  if (!nums.length) return () => {};
+  if (mode === 'roll') return rollDigits(nums, meters);
+  const items = nums.map((e) => {
+    const fmt = { decimals: Number(e.dataset.decimals), group: e.dataset.group ?? '', dec: e.dataset.dec || '.' };
+    const to = Number(e.dataset.value);
+    const from = Number(e.dataset.from ?? 0);
+    // Hold the final width so the unit after the number doesn't jitter
+    e.style.minWidth = `${e.offsetWidth}px`;
+    return { e, fmt, to, from, final: e.textContent ?? '' };
+  });
+  const mfrom = meters.map((m) => {
+    const p = Number(m.dataset.p);
+    const n = items[0];
+    // A meter starts where its number starts
+    return n && n.to ? Math.max(0, Math.min(1, p * (n.from / n.to))) : 0;
+  });
+  const t0 = performance.now();
+  let raf = 0;
+  const frame = () => {
+    const k = Math.min(1, (performance.now() - t0) / COUNT_MS);
+    const x = easeOut(k);
+    for (const it of items) it.e.textContent = k >= 1 ? it.final : formatLike(it.from + (it.to - it.from) * x, it.fmt);
+    meters.forEach((m, i) => m.style.setProperty('--p', (mfrom[i] + (Number(m.dataset.p) - mfrom[i]) * x).toFixed(4)));
+    if (k < 1) raf = requestAnimationFrame(frame);
+  };
+  frame();
+  return () => cancelAnimationFrame(raf);
+}
+
+function rollDigits(nums: HTMLElement[], meters: HTMLElement[]): () => void {
+  nums.forEach((e) => {
+    const final = e.textContent ?? '';
+    e.setAttribute('aria-label', final);
+    const digits = [...final].filter((c) => /\d/.test(c)).length;
+    let d = 0;
+    e.replaceChildren(
+      ...[...final].map((c) => {
+        if (!/\d/.test(c)) {
+          const s = document.createElement('span');
+          s.className = 's-reel-char';
+          s.textContent = c;
+          return s;
+        }
+        const reel = document.createElement('span');
+        reel.className = 's-reel';
+        // The hidden digit sets the reel's size; the strip of 21 digits rolls over it, ending on it
+        const ghost = document.createElement('span');
+        ghost.className = 's-reel-ghost';
+        ghost.textContent = c;
+        const strip = document.createElement('span');
+        strip.className = 's-reel-strip';
+        strip.setAttribute('aria-hidden', 'true');
+        for (const ch of '0123456789'.repeat(2) + c) {
+          const s = document.createElement('span');
+          s.textContent = ch;
+          strip.appendChild(s);
+        }
+        // Earlier digits spin a little longer, so the number settles right to left like a counter
+        strip.style.setProperty('--d', `${(digits - d) * 90}ms`);
+        d++;
+        reel.append(ghost, strip);
+        return reel;
+      }),
+    );
+  });
+  meters.forEach((m) => m.style.setProperty('--p', '0'));
+  // Next frame: let the strips start at 0, then roll them to their digit
+  const raf = requestAnimationFrame(() =>
+    requestAnimationFrame(() => {
+      nums.forEach((e) => e.classList.add('is-rolling'));
+      meters.forEach((m) => {
+        m.classList.add('is-filling');
+        m.style.setProperty('--p', m.dataset.p ?? '0');
+      });
+    }),
+  );
+  return () => cancelAnimationFrame(raf);
+}
+
+/**
+ * Webviews: swap each placeholder for the live page, behind a shield that
+ * keeps clicks and keys for the slides (Stage lifts it with I).
+ * `ask`: show a button first (decks opened from a shared link).
+ */
+function hydrateWeb(slide: HTMLElement, ask: boolean): void {
+  slide.querySelectorAll<HTMLElement>('.s-web[data-src]').forEach((box) => {
+    const { src, host, isolate } = box.dataset as { src: string; host: string; isolate?: string };
+    const load = () => {
+      box.querySelector('.s-web-frame')?.remove();
+      box.appendChild(webFrame(src, host, isolate === '1'));
+      const shield = el('div', 's-web-shield');
+      const hint = el('span', 's-web-hint');
+      hint.textContent = 'Press I to use the page';
+      shield.appendChild(hint);
+      box.appendChild(shield);
+      box.classList.add('is-live');
+    };
+    if (!ask) return load();
+    const card = box.querySelector('.s-web-card');
+    const btn = document.createElement('button');
+    btn.className = 's-web-load';
+    btn.type = 'button';
+    btn.textContent = `Load ${host}`;
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      load();
+    });
+    card?.querySelector('.s-web-note')?.replaceChildren(document.createTextNode('This deck came from a link. Load the page?'));
+    card?.appendChild(btn);
+  });
 }
 
 /* ------------------------------------------------------------------ */
@@ -632,7 +1124,17 @@ function overflows(slide: HTMLElement): boolean {
   if (!inner) return false;
   // Children overflow into the container's scrollable area (glyph overhang from
   // tight display leading is ignored by only measuring the container).
-  return inner.scrollHeight > inner.clientHeight + 2 || inner.scrollWidth > inner.clientWidth + 2;
+  if (inner.scrollHeight > inner.clientHeight + 2 || inner.scrollWidth > inner.clientWidth + 2) return true;
+  // A cycle's labels sit around the loop: each must stay inside the loop's box
+  const cycle = slide.querySelector<HTMLElement>('.s-cycle');
+  if (cycle) {
+    const b = cycle.getBoundingClientRect();
+    for (const l of Array.from(cycle.querySelectorAll<HTMLElement>('.s-cycle-step, .s-cycle-center'))) {
+      const r = l.getBoundingClientRect();
+      if (r.left < b.left - 2 || r.right > b.right + 2 || r.top < b.top - 2 || r.bottom > b.bottom + 2) return true;
+    }
+  }
+  return false;
 }
 
 let measureHost: HTMLElement | null = null;
@@ -659,8 +1161,9 @@ export function fit(slide: HTMLElement): void {
     if (!overflows(slide)) break;
   }
   if (step === 1) grow(slide);
-  // Still too much at the smallest step: the editor and strip flag it
-  if (overflows(slide)) slide.dataset.overflow = '1';
+  fitNumber(slide);
+  // Still too much at the smallest step (or a cycle with too many steps): the editor and strip flag it
+  if (overflows(slide) || slide.classList.contains('is-crowded')) slide.dataset.overflow = '1';
   else delete slide.dataset.overflow;
   hang(slide);
   trimSlots(slide);
@@ -709,8 +1212,22 @@ function grow(slide: HTMLElement): void {
   fitCode(slide);
 }
 
-/** All big figures on a slide share one size: the largest at which the widest fits. */
+/**
+ * All big figures on a slide share one size: the largest at which the widest fits.
+ * A big-number slide's figure works the same way, on its own.
+ */
+function fitNumber(slide: HTMLElement): void {
+  const big = slide.querySelector<HTMLElement>('.s-number');
+  if (!big) return;
+  big.style.removeProperty('--num-k');
+  const box = big.parentElement!;
+  // Inside a ring, the figure has the ring's inner width to itself
+  const room = box.classList.contains('is-ring') ? box.clientWidth * 0.72 : big.clientWidth;
+  if (big.scrollWidth > room + 1) big.style.setProperty('--num-k', ((room / big.scrollWidth) * 0.98).toFixed(3));
+}
+
 function fitFigures(slide: HTMLElement): void {
+  fitNumber(slide);
   const heads = slide.querySelectorAll<HTMLElement>('.is-figures .s-section > :is(h1, h2, h3, h4, h5, h6)');
   if (!heads.length) return;
   const cols = heads[0].closest<HTMLElement>('.s-columns')!;
@@ -766,13 +1283,34 @@ function trimSlots(slide: HTMLElement): void {
 }
 
 export function renderDeck(slides: SlideSource[], opts: Omit<RenderOptions, 'total'>): HTMLElement[] {
-  const nodes = slides.map((s) => {
-    const node = renderSlide(s, { ...opts, total: slides.length });
+  const render = (s: SlideSource, sections?: SectionEntry[]) => {
+    const node = renderSlide(s, { ...opts, total: slides.length, sections });
     fit(node);
     return node;
+  };
+  // Agendas list the section slides, so they're made after everything else
+  const nodes: (HTMLElement | null)[] = slides.map((s) => (isAgenda(s) ? null : render(s)));
+  const sections = sectionList(nodes);
+  const done = nodes.map((n, i) => n ?? render(slides[i], sections));
+  numberSections(done);
+  return done;
+}
+
+/** Agendas need the deck's sections before they can be made. */
+export const isAgenda = (s: SlideSource) => s.layoutHint === 'agenda' && !s.web;
+
+/**
+ * The deck's section slides, in order, from rendered slides (null: not made yet).
+ * Breaks (a section with a timer) and a closing slide ("Thanks", "Questions") aren't topics.
+ */
+export function sectionList(nodes: (HTMLElement | null)[]): SectionEntry[] {
+  const out: SectionEntry[] = [];
+  nodes.forEach((n, i) => {
+    if (n?.dataset.layout !== 'section' || n.classList.contains('has-timer') || (i === nodes.length - 1 && i > 0)) return;
+    const title = n.querySelector('.s-title')?.textContent?.trim();
+    if (title) out.push({ title, index: i });
   });
-  numberSections(nodes);
-  return nodes;
+  return out;
 }
 
 /** Give each section slide its ordinal (`--section`), for themes that show it. */

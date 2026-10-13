@@ -29,7 +29,11 @@ npm run build      # static site in dist/, deploy anywhere
 | `// dark`, `// light`, `// invert` | Shows this one slide in the other appearance |
 | `// image: contain` | Shows whole images (logos, diagrams) instead of cropping them |
 | `// chart: bar` or `// chart: line` | Draws the slide's table as a chart |
-| `// timer: 5:00` | A countdown that runs while you present |
+| `// timer: 5:00` | A countdown that runs while you present. Add `ring` or `bar` to show it running down, `next` to move on at zero; `// timer: until 14:45` counts down to a clock time |
+| `// count` or `// count: roll` | Big numbers count up (or roll like an odometer) when the slide comes up |
+| `// number: ring` or `// number: bar` | Draws a big percentage as a meter |
+| `// web: https://…` | A live web page on the slide, loaded when you present |
+| `// focus: 2` | Keeps step 2 bright and fades the rest (cycles, columns, timelines, agendas); `2,4` or `2-4` also work |
 
 The **Markdown guide** (the ? button) has an example of each; click one to insert it. It opens on its own when you start a new deck. The editor suggests front matter keys and values, `//` directives, code languages and callout types as you type. A slide with too much to fit gets an orange ring on its number.
 
@@ -72,6 +76,10 @@ In Cue, list markers `-`, `+` and `*` follow standard Markdown: changing the mar
 - **full**: one image alone, edge to edge
 - **columns**: two or more subheadings of the same level. When every column head is a short number (`### 0`, `### 42%`), they're set as big figures.
 - **timeline** (`// layout: timeline`): the columns hang from one horizontal line, with a dot for each entry. Use dates as the subheadings.
+- **cycle** (`// layout: cycle`): two to seven subheadings in a loop of arrows, for work that repeats. A short tabbed line before the first subheading sits in the middle. Quiet and bookish themes draw it with hairlines and dots; the rest with thick arrows.
+- **number**: a title that is only a figure (`## $4.2M`, `## 118%`), set as big as it fits, with a kicker above and a caption below. `## $2.9M → $4.2M` shows the change. A year on its own (`## 2026`) stays a section.
+- **agenda** (`// layout: agenda`): lists the deck's section slides by themselves. The next section lights up and the ones behind you step back, so one agenda slide before each part of the talk shows where you are. Breaks (a section with a timer) and a closing slide are left out. A tabbed list on the slide is used instead, if you write one.
+- **web** (`// web: https://…`): a live page in a frame under the title, or edge to edge on a slide with nothing else. YouTube, Vimeo, Loom, Figma and Google Slides links are turned into their players. Slides only show a placeholder; the page loads when you present.
 
 Long content steps the type scale down until it fits. Sparse content steps the body text up a little, so a short slide doesn't sit in the top third. Titles keep their size either way.
 
@@ -169,6 +177,9 @@ Every push to `main` builds the app and publishes it to GitHub Pages (`.github/w
 ## Presenting
 
 - **Present** (`⌘↵`): fullscreen. Use the arrows, space or a click to move, and `Esc` to exit.
+  - Count-ups, rolling digits and timers run only here and in the presenter window. Everywhere else (the preview, thumbnails, print) shows the final numbers and a full ring. With "reduce motion" turned on in your system settings, numbers don't animate.
+  - On a web page slide, press `I` to use the page (click, scroll, type), and click beside it to get back to your slides. Until you press `I`, clicks and keys move the slides. Some sites refuse to be shown inside another page; the slide then offers "Open in new tab".
+  - Web pages load in a sandbox and aren't told which deck they're on. In a deck opened from a shared link, each page asks before it loads.
 - **Presenter** (`⌘⇧↵`): opens a second window with your notes as a teleprompter, the current and next slide, a timer and a clock. Navigating in either window keeps both in sync.
 
 ## Structure
@@ -181,7 +192,9 @@ src/
   editor.ts     CodeMirror 6 setup, line roles, slide colors, ⇥ marks
   parser.ts     markdown script → slides (visible vs. notes, front matter)
   markdown.ts   the markdown dialect (markdown-it + iA Presenter extensions)
-  render.ts     autolayout, slide DOM, fit-to-slide, scaling
+  render.ts     autolayout, slide DOM, fit-to-slide, scaling, activate() (what runs while presenting)
+  cycle.ts      // layout: cycle, the loop drawn as SVG
+  web.ts        // web: addresses, embed links, the sandboxed frame
   themes.ts     theme data → CSS custom properties
   typefaces.ts  the bundled font library (fonts.ts imports the files)
   flexoki.ts    the Flexoki palette, patterns and swatches

@@ -90,7 +90,7 @@ An image alone fills the whole slide.
 ### 16
 	Themes, each light and dark
 
-### 10
+### 14
 	Layouts, chosen for you
 
 ### 0
@@ -120,6 +120,35 @@ When every column starts with a short number, the numbers become big figures. Un
 
 ---
 
+// layout: cycle
+## Rehearse in a loop
+	Until it feels easy
+
+### Write
+	Say it in plain text
+
+### Rehearse
+	Out loud, with the timer
+
+### Listen
+	Where did you stumble?
+
+### Cut
+	One idea per slide
+
+`// layout: cycle` puts the columns in a loop of arrows, for work that repeats. Add `// focus: 2` and every step but the second fades back: copy the slide once per step to walk through it.
+
+---
+
+#### Example: a sales review
+## $2.9M → $4.2M
+	Annual recurring revenue
+// count
+
+A title that is only a figure becomes a big number. An arrow between two figures shows the change, and `// count` counts up when you present. Try `// count: roll`, or `// number: ring` on a percentage.
+
+---
+
 ## Bullet points, sparingly
 
 	Slides filled with bullet points look like a lot of work and will sabotage your presentation.
@@ -138,6 +167,13 @@ Slides filled with bullet points look like a lot of work and will sabotage your 
 	— Robert Bringhurst, [The Elements of Typographic Style](https://www.google.com/search?kgmid=%2Fm%2F02qwn_&q=The+Elements+of+Typographic+Style)
 
 A quote alone gets its own treatment. A last line that starts with a dash becomes the attribution.
+
+---
+
+## Where we are
+// layout: agenda
+
+`// layout: agenda` lists the deck's section slides by themselves. The next one lights up and the ones behind you step back, so the same slide works before every part.
 
 ---
 
@@ -182,12 +218,20 @@ Settings are stored at the top of the file, so they travel with your markdown. T
 
 ---
 
-// timer: 5:00
+## Show the real thing
+	A live page, right on the slide
+// web: https://cewillis.com
+
+`// web:` with an address puts a live web page on the slide when you present: a demo, a poll, a video. Press I to use the page, and click beside it to get back to your slides. Until then, the slide shows where it goes.
+
+---
+
+// timer: 5:00 ring
 ## Five minutes for questions
 
 	The clock starts when this slide comes up.
 
-`// timer: 5:00` turns a slide into a countdown when you present.
+`// timer: 5:00` turns a slide into a countdown when you present. Add `ring` or `bar` to see the time run down, and `next` to move on at zero. `// timer: until 14:45` counts down to a time of day.
 
 ---
 
